@@ -1,0 +1,44 @@
+<!-- templates/_base.html -->
+
+{% load compress %}
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ClubSport{% endblock title %}</title>
+
+    <!-- Flowbite CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.css">
+
+    {% compress css %}
+    <link rel="stylesheet" href="{% static 'src/output.css' %}">
+    {% endcompress %}
+
+    {% block extra_head %}{% endblock extra_head %}
+</head>
+
+<body class="bg-gray-50 text-gray-900 antialiased">
+
+    {% block body %}
+        {% block navbar %}{% endblock navbar %}
+
+        <main class="{% block main_class %}{% endblock main_class %}">
+            {% block content %}
+            {% endblock content %}
+        </main>
+
+        {% block footer %}{% endblock footer %}
+    {% endblock body %}
+
+    <!-- Flowbite JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.js"></script>
+
+    {% block extra_scripts %}{% endblock extra_scripts %}
+</body>
+
+</html>
