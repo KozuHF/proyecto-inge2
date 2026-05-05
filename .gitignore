@@ -26,9 +26,9 @@ db.sqlite3-journal
 staticfiles/
 media/
 
-# Migraciones (opcional: ignorar solo si sabes lo que haces)
-*/migrations/*
-!*/migrations/__init__.py
+# Migraciones
+#*/migrations/*
+#!*/migrations/__init__.py
 
 # Archivos de configuración local
 local_settings.py
