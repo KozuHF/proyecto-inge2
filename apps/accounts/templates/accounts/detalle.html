@@ -1,0 +1,40 @@
+{% extends "_base.html" %}
+
+{% block title %}Login{% endblock title %}
+
+{% block content %}
+
+<h1>Detalle de usuario</h1>
+ 
+<table border="1">
+    <tr><th>ID</th><td>{{ usuario.id }}</td></tr>
+    <tr><th>Nombre</th><td>{{ usuario.nombre }}</td></tr>
+    <tr><th>Apellido</th><td>{{ usuario.apellido }}</td></tr>
+    <tr><th>Email</th><td>{{ usuario.email }}</td></tr>
+    <tr><th>Nro. documento</th><td>{{ usuario.nro_documento }}</td></tr>
+    <tr><th>Fecha de nacimiento</th><td>{{ usuario.fecha_nacimiento }}</td></tr>
+    <tr><th>Activo</th><td>{{ usuario.is_active|yesno:"Sí,No" }}</td></tr>
+    <tr><th>Staff</th><td>{{ usuario.is_staff|yesno:"Sí,No" }}</td></tr>
+    <tr><th>Fecha de registro</th><td>{{ usuario.date_joined }}</td></tr>
+</table>
+ 
+<p>
+    <a href="{% url 'accounts:editar' usuario.pk %}">Editar</a> |
+    <a href="{% url 'accounts:lista' %}">Volver a la lista</a>
+</p>
+ 
+{% if request.user.is_staff %}
+    {% if usuario.is_active %}
+        <form method="post" action="{% url 'accounts:desactivar' usuario.pk %}">
+            {% csrf_token %}
+            <button type="submit">Desactivar usuario</button>
+        </form>
+    {% else %}
+        <form method="post" action="{% url 'accounts:activar' usuario.pk %}">
+            {% csrf_token %}
+            <button type="submit">Activar usuario</button>
+        </form>
+    {% endif %}
+{% endif %}
+
+{% endblock %}
