@@ -1,0 +1,76 @@
+{% extends "_base.html" %}
+
+{% block title %}Login{% endblock title %}
+
+{% block content %}
+
+<h1>Usuarios ({{ total }} en total)</h1>
+ 
+<h2>Filtros</h2>
+<form method="get">
+    {{ form_filtro.as_p }}
+    <button type="submit">Filtrar</button>
+    <a href="{% url 'accounts:lista' %}">Limpiar filtros</a>
+</form>
+ 
+<hr>
+ 
+{% if page_obj %}
+    <table border="1">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Apellido</th>
+                <th>Email</th>
+                <th>Documento</th>
+                <th>Activo</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in page_obj %}
+            <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.nombre }}</td>
+                <td>{{ u.apellido }}</td>
+                <td>{{ u.email }}</td>
+                <td>{{ u.nro_documento }}</td>
+                <td>{{ u.is_active|yesno:"Sí,No" }}</td>
+                <td>
+                    <a href="{% url 'accounts:detalle' u.pk %}">Ver</a>
+                    <a href="{% url 'accounts:editar' u.pk %}">Editar</a>
+ 
+                    {% if request.user.is_staff %}
+                        {% if u.is_active %}
+                            <form method="post" action="{% url 'accounts:desactivar' u.pk %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit">Desactivar</button>
+                            </form>
+                        {% else %}
+                            <form method="post" action="{% url 'accounts:activar' u.pk %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit">Activar</button>
+                            </form>
+                        {% endif %}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+ 
+    <p>
+        Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+        {% if page_obj.has_previous %}
+            | <a href="?page={{ page_obj.previous_page_number }}">Anterior</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+            | <a href="?page={{ page_obj.next_page_number }}">Siguiente</a>
+        {% endif %}
+    </p>
+{% else %}
+    <p>No se encontraron usuarios.</p>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "_base.html" %}
+
+{% block title %}Login{% endblock title %}
+
+{% block content %}
+
+<h1>Editar usuario: {{ usuario.get_full_name }}</h1>
+ 
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Guardar cambios</button>
+    <a href="{% url 'accounts:detalle' usuario.pk %}">Cancelar</a>
+</form>
+
+{% endblock %}

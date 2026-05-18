@@ -1,0 +1,184 @@
+import logging
+
+from django.contrib import messages
+from django.contrib.auth import login, logout, update_session_auth_hash
+from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.forms import AuthenticationForm
+from django.core.paginator import Paginator
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext_lazy as _
+from django.views.decorators.http import require_POST
+
+from .forms import (
+    CambiarPasswordForm,
+    UsuarioCreacionForm,
+    UsuarioFiltroForm,
+    UsuarioModificacionForm,
+)
+from .repository import UsuarioRepository
+
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────
+#  Autenticación
+# ──────────────────────────────────────────────────────────────────
+
+def vista_login(request):
+    """Autenticación de usuario con el sistema de login de Django."""
+    if request.user.is_authenticated:
+        return redirect("accounts:lista")
+
+    form = AuthenticationForm(request, data=request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        usuario = form.get_user()
+        login(request, usuario)
+        logger.info("Login exitoso: %s (ID=%s)", usuario.email, usuario.pk)
+        messages.success(request, _("Bienvenido, %s.") % usuario.get_short_name())
+        return redirect(request.GET.get("next", "accounts:lista"))
+
+    return render(request, "accounts/login.html", {"form": form})
+
+
+@login_required
+def vista_logout(request):
+    """Cierra la sesión del usuario actual."""
+    logger.info("Logout: %s (ID=%s)", request.user.email, request.user.pk)
+    logout(request)
+    messages.info(request, _("Sesión cerrada correctamente."))
+    return redirect("accounts:login")
+
+
+# ──────────────────────────────────────────────────────────────────
+#  CRUD de usuarios
+# ──────────────────────────────────────────────────────────────────
+
+@login_required
+def lista_usuarios(request):
+    """
+    Lista usuarios con búsqueda y filtros.
+    Acepta parámetros GET del formulario UsuarioFiltroForm.
+    """
+    form_filtro = UsuarioFiltroForm(request.GET or None)
+    qs = UsuarioRepository.obtener_todos()
+
+    if form_filtro.is_valid():
+        data = form_filtro.cleaned_data
+        qs = UsuarioRepository.buscar_con_filtros(
+            nombre=data.get("nombre"),
+            apellido=data.get("apellido"),
+            email=data.get("email"),
+            nro_documento=data.get("nro_documento"),
+            fecha_nacimiento_desde=data.get("fecha_nacimiento_desde"),
+            fecha_nacimiento_hasta=data.get("fecha_nacimiento_hasta"),
+            is_active=data.get("is_active"),
+        )
+
+    paginator = Paginator(qs, per_page=20)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    return render(request, "accounts/lista.html", {
+        "page_obj": page_obj,
+        "form_filtro": form_filtro,
+        "total": qs.count(),
+    })
+
+
+@login_required
+def busqueda_global(request):
+    """Búsqueda rápida por término libre sobre nombre, apellido, email y documento."""
+    termino = request.GET.get("q", "").strip()
+    qs = UsuarioRepository.buscar_con_filtros(busqueda_global=termino) if termino else []
+
+    return render(request, "accounts/busqueda.html", {
+        "resultados": qs,
+        "termino": termino,
+    })
+
+
+def registro_usuario(request):
+    """Registro de un nuevo usuario. Accesible sin autenticación."""
+    form = UsuarioCreacionForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            usuario = form.save()
+            logger.info("Nuevo usuario registrado: %s (ID=%s)", usuario.email, usuario.pk)
+            messages.success(request, _("Cuenta creada exitosamente. Podés iniciar sesión."))
+            return redirect("accounts:login")
+        except Exception as exc:
+            logger.error("Error al registrar usuario: %s", exc)
+            messages.error(request, _("Ocurrió un error al crear la cuenta. Intente nuevamente."))
+
+    return render(request, "accounts/registro.html", {"form": form})
+
+
+@login_required
+def detalle_usuario(request, pk):
+    """Detalle de un usuario específico."""
+    usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
+    return render(request, "accounts/detalle.html", {"usuario": usuario})
+
+
+@login_required
+def editar_usuario(request, pk):
+    """Edición de datos de un usuario (sin contraseña)."""
+    usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
+
+    # Solo staff o el propio usuario pueden editar
+    if not request.user.is_staff and request.user.pk != usuario.pk:
+        messages.error(request, _("No tenés permiso para editar este usuario."))
+        return redirect("accounts:detalle", pk=pk)
+
+    form = UsuarioModificacionForm(request.POST or None, instance=usuario)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        logger.info("Usuario editado: %s (ID=%s) por %s", usuario.email, usuario.pk, request.user.email)
+        messages.success(request, _("Datos actualizados correctamente."))
+        return redirect("accounts:detalle", pk=pk)
+
+    return render(request, "accounts/editar.html", {"form": form, "usuario": usuario})
+
+
+@login_required
+def cambiar_password(request):
+    """Permite al usuario autenticado cambiar su propia contraseña."""
+    form = CambiarPasswordForm(request.user, request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        usuario = form.save()
+        # Mantiene la sesión activa tras el cambio de contraseña
+        update_session_auth_hash(request, usuario)
+        logger.info("Contraseña cambiada para usuario ID=%s", usuario.pk)
+        messages.success(request, _("Contraseña actualizada correctamente."))
+        return redirect("accounts:detalle", pk=usuario.pk)
+
+    return render(request, "accounts/cambiar_password.html", {"form": form})
+
+
+@login_required
+@require_POST
+def desactivar_usuario(request, pk):
+    """Desactivación (soft delete) de un usuario. Solo staff."""
+    if not request.user.is_staff:
+        messages.error(request, _("No tenés permiso para realizar esta acción."))
+        return redirect("accounts:lista")
+
+    usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
+    UsuarioRepository.desactivar(usuario)
+    logger.warning("Usuario desactivado: %s (ID=%s) por %s", usuario.email, usuario.pk, request.user.email)
+    messages.warning(request, _("Usuario %s desactivado.") % usuario.get_full_name())
+    return redirect("accounts:lista")
+
+
+@login_required
+@require_POST
+def activar_usuario(request, pk):
+    """Reactiva un usuario desactivado. Solo staff."""
+    if not request.user.is_staff:
+        messages.error(request, _("No tenés permiso para realizar esta acción."))
+        return redirect("accounts:lista")
+
+    usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
+    UsuarioRepository.activar(usuario)
+    logger.info("Usuario activado: %s (ID=%s) por %s", usuario.email, usuario.pk, request.user.email)
+    messages.success(request, _("Usuario %s activado.") % usuario.get_full_name())
+    return redirect("accounts:lista")

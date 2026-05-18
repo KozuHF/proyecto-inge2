@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'compressor',
     'core',
+    'apps.accounts',
 ]
 
 MIDDLEWARE = [
@@ -82,23 +83,72 @@ DATABASES = {
 }
 
 
+# ─────────────────────────────────────────────
+#  Modelo de usuario personalizado
+#  Debe declararse ANTES de la primera migración.
+#  'accounts' es la app que contiene el modelo Usuario.
+# ─────────────────────────────────────────────
+AUTH_USER_MODEL = 'accounts.Usuario'
+
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
+        # Bloquea contraseñas similares a los datos del usuario
+        # (email, nombre, apellido, nro_documento)
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        'OPTIONS': {
+            'user_attributes': ('email', 'nombre', 'apellido', 'nro_documento'),
+        },
     },
     {
+        # Longitud mínima de 8 caracteres
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8},
     },
     {
+        # Bloquea contraseñas de uso común (rockyou.txt, etc.)
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
+        # Bloquea contraseñas puramente numéricas
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+
+# ─────────────────────────────────────────────
+#  Hasheo de contraseñas
+#  PBKDF2+SHA256 con salt aleatorio (Django default).
+#  El hasher más seguro siempre va primero.
+#  Para usar Argon2: pip install django[argon2]
+#  y descomentar la línea correspondiente.
+# ─────────────────────────────────────────────
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    # 'django.contrib.auth.hashers.Argon2PasswordHasher',
+]
+
+
+# ─────────────────────────────────────────────
+#  Seguridad de sesiones y cookies
+# ─────────────────────────────────────────────
+SESSION_COOKIE_HTTPONLY = True   # La cookie de sesión no es accesible desde JS
+SESSION_COOKIE_SAMESITE = 'Lax'  # Mitigación CSRF entre sitios
+SESSION_COOKIE_AGE = 3600        # Sesión expira en 1 hora
+
+CSRF_COOKIE_HTTPONLY = False      # Necesario para requests AJAX con CSRF
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# En producción con HTTPS, descomentar:
+# SESSION_COOKIE_SECURE = True
+# CSRF_COOKIE_SECURE = True
+# SECURE_HSTS_SECONDS = 31536000
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# SECURE_SSL_REDIRECT = True
 
 
 # Internationalization
@@ -128,3 +178,59 @@ COMPRESS_ROOT = BASE_DIR / 'static'
 COMPRESS_ENABLED = True
 
 STATICFILES_FINDERS = ('compressor.finders.CompressorFinder',)
+
+#redirección del login
+
+LOGIN_URL = 'accounts:login'
+LOGIN_REDIRECT_URL = 'home'
+LOGOUT_REDIRECT_URL = 'home'
+
+# ─────────────────────────────────────────────
+#  Logging
+#  Registra eventos de la app accounts (login, logout,
+#  creación de usuarios, errores) en consola y archivo.
+#  Crear el directorio antes de correr: mkdir logs
+# ─────────────────────────────────────────────
+import logging.handlers  # noqa: E402
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'archivo_accounts': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'accounts.log',
+            'maxBytes': 5 * 1024 * 1024,  # 5 MB por archivo
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        # Logs de la app accounts (autenticación, usuarios)
+        'accounts': {
+            'handlers': ['console', 'archivo_accounts'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Alertas de seguridad de Django (intentos de CSRF, etc.)
+        'django.security': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
