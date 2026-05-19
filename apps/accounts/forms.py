@@ -26,6 +26,11 @@ class UsuarioCreacionForm(forms.ModelForm):
         label=_("Confirmar contraseña"),
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
     )
+    declaracion_salud = forms.BooleanField(
+        label=_("Declaro bajo juramento que me encuentro en condiciones físicas para la práctica deportiva y no poseo impedimentos médicos."),
+        required=True,
+        error_messages={'required': _("Debe aceptar la declaración de salud para registrarse.")}
+    )
 
     class Meta:
         model = Usuario
