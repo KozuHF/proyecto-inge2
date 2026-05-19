@@ -1,4 +1,4 @@
-/*! tailwindcss v4.2.4 | MIT License | https://tailwindcss.com */
+/*! tailwindcss v4.3.0 | MIT License | https://tailwindcss.com */
 @layer properties;
 @layer theme, base, components, utilities;
 @layer theme {
@@ -276,85 +276,24 @@
     --leading-6: 24px;
     --radius-base: 8px;
     --color-body: var(--color-stone-600);
-    --color-body-subtle: var(--color-stone-500);
     --color-heading: var(--color-stone-900);
-    --color-fg-brand-subtle: var(--color-stone-200);
     --color-fg-brand: var(--color-stone-950);
-    --color-fg-brand-strong: var(--color-stone-900);
-    --color-fg-success: var(--color-green-700);
-    --color-fg-success-strong: var(--color-green-900);
-    --color-fg-danger: var(--color-red-700);
-    --color-fg-danger-strong: var(--color-red-900);
-    --color-fg-warning-subtle: var(--color-orange-600);
-    --color-fg-warning: var(--color-orange-900);
-    --color-fg-yellow: var(--color-yellow-400);
     --color-fg-disabled: var(--color-stone-400);
-    --color-fg-purple: var(--color-purple-600);
-    --color-fg-cyan: var(--color-cyan-600);
-    --color-fg-indigo: var(--color-indigo-600);
-    --color-fg-pink: var(--color-pink-600);
-    --color-fg-lime: var(--color-lime-600);
-    --color-neutral-primary-soft: var(--color-white);
     --color-neutral-primary: var(--color-white);
     --color-neutral-primary-medium: var(--color-white);
-    --color-neutral-primary-strong: var(--color-white);
     --color-neutral-secondary-soft: var(--color-stone-100);
     --color-neutral-secondary: var(--color-stone-100);
     --color-neutral-secondary-medium: var(--color-stone-100);
-    --color-neutral-secondary-strong: var(--color-stone-100);
-    --color-neutral-secondary-strongest: var(--color-stone-100);
-    --color-neutral-tertiary-soft: var(--color-stone-100);
     --color-neutral-tertiary: var(--color-stone-100);
     --color-neutral-tertiary-medium: var(--color-stone-100);
     --color-neutral-quaternary: var(--color-stone-200);
-    --color-neutral-quaternary-medium: var(--color-stone-200);
-    --color-gray: var(--color-stone-300);
-    --color-brand-softer: var(--color-stone-50);
-    --color-brand-soft: var(--color-stone-100);
     --color-brand: var(--color-stone-900);
     --color-brand-medium: var(--color-stone-200);
     --color-brand-strong: var(--color-stone-800);
-    --color-success-soft: var(--color-green-50);
-    --color-success: var(--color-green-700);
-    --color-success-medium: var(--color-green-100);
-    --color-success-strong: var(--color-green-800);
-    --color-danger-soft: var(--color-red-50);
-    --color-danger: var(--color-red-700);
-    --color-danger-medium: var(--color-red-100);
-    --color-danger-strong: var(--color-red-800);
-    --color-warning-soft: var(--color-orange-50);
-    --color-warning: var(--color-orange-500);
-    --color-warning-medium: var(--color-orange-100);
-    --color-warning-strong: var(--color-orange-700);
-    --color-dark-soft: var(--color-stone-800);
     --color-dark: var(--color-stone-800);
-    --color-dark-strong: var(--color-stone-900);
-    --color-disabled: var(--color-stone-100);
-    --color-purple: var(--color-purple-500);
-    --color-sky: var(--color-sky-500);
-    --color-teal: var(--color-teal-600);
-    --color-pink: var(--color-pink-600);
-    --color-cyan: var(--color-cyan-500);
-    --color-fuchsia: var(--color-fuchsia-600);
-    --color-indigo: var(--color-indigo-600);
-    --color-orange: var(--color-orange-400);
-    --color-buffer: var(--color-white);
-    --color-buffer-medium: var(--color-white);
-    --color-buffer-strong: var(--color-white);
-    --color-muted: var(--color-stone-50);
-    --color-light-subtle: var(--color-stone-50);
     --color-light: var(--color-stone-50);
-    --color-light-medium: var(--color-stone-50);
-    --color-default-subtle: var(--color-stone-100);
     --color-default: var(--color-stone-100);
     --color-default-medium: var(--color-stone-100);
-    --color-default-strong: var(--color-stone-100);
-    --color-success-subtle: var(--color-green-200);
-    --color-danger-subtle: var(--color-red-200);
-    --color-warning-subtle: var(--color-orange-200);
-    --color-brand-subtle: var(--color-stone-200);
-    --color-brand-light: var(--color-stone-600);
-    --color-dark-subtle: var(--color-stone-800);
     --color-dark-backdrop: var(--color-stone-950);
   }
 }
@@ -848,12 +787,6 @@
   .inset-0 {
     inset: calc(var(--spacing) * 0);
   }
-  .start {
-    inset-inline-start: var(--spacing);
-  }
-  .end {
-    inset-inline-end: var(--spacing);
-  }
   .top-0 {
     top: calc(var(--spacing) * 0);
   }
@@ -1341,6 +1274,9 @@
   .max-h-full {
     max-height: 100%;
   }
+  .min-h-screen {
+    min-height: 100vh;
+  }
   .datatable-table {
     .datatable-wrapper & {
       width: 100%;
@@ -1405,9 +1341,6 @@
     .datatable-wrapper & .datatable-empty {
       text-align: center;
     }
-  }
-  .w-1 {
-    width: calc(var(--spacing) * 1);
   }
   .w-1\/2 {
     width: calc(1 / 2 * 100%);
@@ -1490,8 +1423,8 @@
   .shrink-0 {
     flex-shrink: 0;
   }
-  .border-collapse {
-    border-collapse: collapse;
+  .flex-grow {
+    flex-grow: 1;
   }
   .-translate-x-full {
     --tw-translate-x: -100%;
@@ -1788,9 +1721,6 @@
   .bg-brand {
     background-color: var(--color-brand);
   }
-  .bg-dark-backdrop {
-    background-color: var(--color-dark-backdrop);
-  }
   .bg-dark-backdrop\/70 {
     background-color: color-mix(in srgb, oklch(14.7% 0.004 49.25) 70%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1811,9 +1741,6 @@
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-gray-900) 50%, transparent);
     }
-  }
-  .bg-green-50 {
-    background-color: var(--color-green-50);
   }
   .bg-green-100 {
     background-color: var(--color-green-100);
@@ -1897,18 +1824,6 @@
     }
     .dark .apexcharts-canvas .apexcharts-datalabels-group .apexcharts-text& {
       fill: white !important;
-    }
-  }
-  .apexcharts-gridline {
-    stroke: var(--color-default) !important;
-    .dark & {
-      stroke: var(--color-default) !important;
-    }
-  }
-  .apexcharts-xcrosshairs {
-    stroke: var(--color-default) !important;
-    .dark & {
-      stroke: var(--color-default) !important;
     }
   }
   .apexcharts-ycrosshairs {
@@ -2230,9 +2145,6 @@
   }
   .uppercase {
     text-transform: uppercase;
-  }
-  .underline {
-    text-decoration-line: underline;
   }
   .antialiased {
     -webkit-font-smoothing: antialiased;
