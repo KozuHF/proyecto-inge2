@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Reservar _ Elegir Fecha</title>
+</head>
+<body>
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Reservar – Elegir fecha" %}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>{% trans "Reservar turno" %}</h1>
+
+  {% include "turnos/_pasos_indicador.html" with paso_actual=2 %}
+
+  <p class="wizard-subtitle">
+    {% trans "Actividad seleccionada:" %} <strong>{{ actividad }}</strong>
+  </p>
+
+  <h2>{% trans "Paso 2: ¿Qué día?" %}</h2>
+  <p class="hint">{% trans "El establecimiento abre de lunes a sábado." %}</p>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="alert alert--{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="form-group">
+      <label for="{{ form.fecha.id_for_label }}">{{ form.fecha.label }}</label>
+      {{ form.fecha }}
+      {{ form.fecha.errors }}
+    </div>
+    <div class="form-actions">
+      <a href="{% url 'turnos:paso_actividad' %}" class="btn btn--secondary">← {% trans "Volver" %}</a>
+      <button type="submit" class="btn btn--primary">{% trans "Siguiente →" %}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+</body>
+</html>

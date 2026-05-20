@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     'compressor',
     'core',
     'apps.accounts',
+    'apps.actividades',
+    'apps.turnos',
 ]
 
 MIDDLEWARE = [
