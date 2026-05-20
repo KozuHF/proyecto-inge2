@@ -1,0 +1,50 @@
+{% extends "_base.html" %}
+
+{% block title %}Búsqueda global - Club360{% endblock title %}
+
+{% block content %}
+
+<h1>Búsqueda global</h1>
+ 
+<form method="get">
+    <input type="text" name="q" value="{{ termino }}" placeholder="Nombre, apellido, email o documento">
+    <button type="submit">Buscar</button>
+</form>
+ 
+<hr>
+ 
+{% if termino %}
+    {% if resultados %}
+        <p>{{ resultados|length }} resultado(s) para "{{ termino }}"</p>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Apellido</th>
+                    <th>Email</th>
+                    <th>Documento</th>
+                    <th>Activo</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in resultados %}
+                <tr>
+                    <td>{{ u.id }}</td>
+                    <td>{{ u.nombre }}</td>
+                    <td>{{ u.apellido }}</td>
+                    <td>{{ u.email }}</td>
+                    <td>{{ u.nro_documento }}</td>
+                    <td>{{ u.is_active|yesno:"Sí,No" }}</td>
+                    <td><a href="{% url 'accounts:detalle' u.pk %}">Ver</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No se encontraron resultados para "{{ termino }}".</p>
+    {% endif %}
+{% endif %}
+
+{% endblock content %}

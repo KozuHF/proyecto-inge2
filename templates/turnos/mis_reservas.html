@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mis Reservas</title>
+</head>
+<body>
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Mis reservas" %}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>{% trans "Mis reservas" %}</h1>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="alert alert--{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="section-header">
+    <a href="{% url 'turnos:paso_actividad' %}" class="btn btn--primary">
+      + {% trans "Nueva reserva" %}
+    </a>
+  </div>
+
+  {# ── Reservas activas ───────────────────────────────────────────────── #}
+  <h2>{% trans "Reservas activas" %}</h2>
+
+  {% if reservas_activas %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{% trans "Actividad" %}</th>
+          <th>{% trans "Fecha" %}</th>
+          <th>{% trans "Horario" %}</th>
+          <th>{% trans "Estado" %}</th>
+          <th>{% trans "Tipo" %}</th>
+          <th>{% trans "Acciones" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for reserva in reservas_activas %}
+          <tr class="{% if reserva.estado == 'en_espera' %}row--espera{% endif %}">
+            <td>{{ reserva.turno.actividad }}</td>
+            <td>{{ reserva.turno.fecha }}</td>
+            <td>{{ reserva.turno.hora|stringformat:"02d" }}:00 – {{ reserva.turno.hora|add:1|stringformat:"02d" }}:00</td>
+            <td>
+              <span class="badge badge--{{ reserva.estado }}">
+                {{ reserva.get_estado_display }}
+              </span>
+            </td>
+            <td>{{ reserva.get_tipo_reserva_display }}</td>
+            <td>
+              <form method="post" action="{% url 'turnos:cancelar_reserva' reserva.pk %}"
+                    onsubmit="return confirm('{% trans "¿Confirmás la cancelación de esta reserva?" %}')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn--danger btn--sm">
+                  {% trans "Cancelar" %}
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty-state">{% trans "No tenés reservas activas." %}</p>
+  {% endif %}
+
+  {# ── Grupos mensuales ───────────────────────────────────────────────── #}
+  {% if grupos_mensuales %}
+    <h2>{% trans "Grupos de reserva mensual" %}</h2>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{% trans "Grupo" %}</th>
+          <th>{% trans "Reservas en el grupo" %}</th>
+          <th>{% trans "Acciones" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for grupo in grupos_mensuales %}
+          {% with activas=grupo.reservas.all|length %}
+          <tr>
+            <td>{{ grupo }}</td>
+            <td>{{ activas }}</td>
+            <td>
+              <form method="post" action="{% url 'turnos:cancelar_grupo_mensual' grupo.pk %}"
+                    onsubmit="return confirm('{% trans "¿Cancelar todas las reservas del grupo mensual?" %}')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn--danger btn--sm">
+                  {% trans "Cancelar grupo" %}
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {# ── Historial ───────────────────────────────────────────────────────── #}
+  {% if reservas_canceladas %}
+    <h2>{% trans "Historial (últimas canceladas)" %}</h2>
+    <table class="table table--muted">
+      <thead>
+        <tr>
+          <th>{% trans "Actividad" %}</th>
+          <th>{% trans "Fecha del turno" %}</th>
+          <th>{% trans "Horario" %}</th>
+          <th>{% trans "Cancelada el" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for reserva in reservas_canceladas %}
+          <tr>
+            <td>{{ reserva.turno.actividad }}</td>
+            <td>{{ reserva.turno.fecha }}</td>
+            <td>{{ reserva.turno.hora|stringformat:"02d" }}:00</td>
+            <td>{{ reserva.fecha_cancelacion|date:"d/m/Y H:i" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+</div>
+{% endblock %}
+</body>
+</html>
