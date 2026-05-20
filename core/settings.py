@@ -181,6 +181,13 @@ COMPRESS_ENABLED = True
 
 STATICFILES_FINDERS = ('compressor.finders.CompressorFinder',)
 
+# ─────────────────────────────────────────────
+#  Correo (recuperación de contraseña)
+#  En desarrollo los mensajes se imprimen en consola.
+# ─────────────────────────────────────────────
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = 'ClubSport <noreply@clubsport.local>'
+
 #redirección del login
 
 LOGIN_URL = 'accounts:login'

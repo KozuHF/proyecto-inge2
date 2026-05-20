@@ -1,10 +1,72 @@
 from django import forms
-from django.contrib.auth.forms import ReadOnlyPasswordHashField, AuthenticationForm
+from django.contrib.auth.forms import (
+    AuthenticationForm,
+    PasswordResetForm,
+    ReadOnlyPasswordHashField,
+    SetPasswordForm,
+)
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from .models import Usuario, validar_mayor_de_edad
+
+INPUT_CLASS = (
+    "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
+    "focus:ring-green-500 focus:border-green-500 block w-full p-2.5"
+)
+
+PASSWORD_HELP_TEXT = _(
+    "Mínimo 8 caracteres. Debe incluir mayúsculas, minúsculas, "
+    "números y caracteres especiales."
+)
+
+
+def validar_fortaleza_password(password):
+    """Validaciones de seguridad compartidas para contraseñas nuevas."""
+    if not password:
+        return
+    errores = []
+    if not any(c.isupper() for c in password):
+        errores.append(_("Debe contener al menos una letra mayúscula."))
+    if not any(c.islower() for c in password):
+        errores.append(_("Debe contener al menos una letra minúscula."))
+    if not any(c.isdigit() for c in password):
+        errores.append(_("Debe contener al menos un número."))
+    if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in password):
+        errores.append(_("Debe contener al menos un carácter especial."))
+    if errores:
+        raise ValidationError(errores)
+
+
+class LoginForm(AuthenticationForm):
+    """Login con email (USERNAME_FIELD del modelo Usuario)."""
+
+    username = forms.EmailField(
+        label=_("Email"),
+        widget=forms.EmailInput(
+            attrs={
+                "autocomplete": "email",
+                "placeholder": "tu@email.com",
+                "class": INPUT_CLASS,
+            }
+        ),
+    )
+    password = forms.CharField(
+        label=_("Contraseña"),
+        widget=forms.PasswordInput(
+            attrs={
+                "autocomplete": "current-password",
+                "placeholder": "••••••••",
+                "class": INPUT_CLASS,
+            }
+        ),
+    )
+
+    error_messages = {
+        "invalid_login": _("Email o contraseña incorrectos."),
+        "inactive": _("Esta cuenta está desactivada."),
+    }
 
 
 class UsuarioCreacionForm(forms.ModelForm):
@@ -15,21 +77,40 @@ class UsuarioCreacionForm(forms.ModelForm):
 
     password1 = forms.CharField(
         label=_("Contraseña"),
-        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
-        min_length=8,
-        help_text=_(
-            "Mínimo 8 caracteres. Debe incluir mayúsculas, minúsculas, "
-            "números y caracteres especiales."
+        widget=forms.PasswordInput(
+            attrs={
+                "autocomplete": "new-password",
+                "placeholder": "••••••••",
+                "class": INPUT_CLASS,
+            }
         ),
+        min_length=8,
+        help_text=PASSWORD_HELP_TEXT,
     )
     password2 = forms.CharField(
         label=_("Confirmar contraseña"),
-        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
+        widget=forms.PasswordInput(
+            attrs={
+                "autocomplete": "new-password",
+                "placeholder": "••••••••",
+                "class": INPUT_CLASS,
+            }
+        ),
     )
-    declaracion_salud = forms.BooleanField(
-        label=_("Declaro bajo juramento que me encuentro en condiciones físicas para la práctica deportiva y no poseo impedimentos médicos."),
+    acepta_sin_impedimentos = forms.BooleanField(
+        label=_("Acepto que no poseo impedimentos físicos"),
         required=True,
-        error_messages={'required': _("Debe aceptar la declaración de salud para registrarse.")}
+        error_messages={
+            "required": _("Es obligatorio marcar esta casilla para registrarse."),
+        },
+        widget=forms.CheckboxInput(
+            attrs={
+                "class": (
+                    "w-4 h-4 mt-0.5 text-green-600 bg-gray-50 border-gray-300 rounded "
+                    "focus:ring-green-500 focus:ring-2"
+                ),
+            }
+        ),
     )
 
     class Meta:
@@ -42,7 +123,13 @@ class UsuarioCreacionForm(forms.ModelForm):
             "fecha_nacimiento",
         )
         widgets = {
-            "fecha_nacimiento": forms.DateInput(attrs={"type": "date"}),
+            "nombre": forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "Juan"}),
+            "apellido": forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "Pérez"}),
+            "nro_documento": forms.TextInput(attrs={"class": INPUT_CLASS, "placeholder": "12345678"}),
+            "email": forms.EmailInput(
+                attrs={"class": INPUT_CLASS, "placeholder": "tu@email.com", "autocomplete": "email"}
+            ),
+            "fecha_nacimiento": forms.DateInput(attrs={"type": "date", "class": INPUT_CLASS}),
         }
 
     def clean_fecha_nacimiento(self):
@@ -53,7 +140,7 @@ class UsuarioCreacionForm(forms.ModelForm):
 
     def clean_password1(self):
         password = self.cleaned_data.get("password1")
-        self._validar_fortaleza_password(password)
+        validar_fortaleza_password(password)
         return password
 
     def clean_password2(self):
@@ -63,21 +150,18 @@ class UsuarioCreacionForm(forms.ModelForm):
             raise ValidationError(_("Las contraseñas no coinciden."))
         return p2
 
-    def _validar_fortaleza_password(self, password):
-        """Aplica validaciones de seguridad básicas sobre la contraseña."""
-        if not password:
-            return
-        errores = []
-        if not any(c.isupper() for c in password):
-            errores.append(_("Debe contener al menos una letra mayúscula."))
-        if not any(c.islower() for c in password):
-            errores.append(_("Debe contener al menos una letra minúscula."))
-        if not any(c.isdigit() for c in password):
-            errores.append(_("Debe contener al menos un número."))
-        if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in password):
-            errores.append(_("Debe contener al menos un carácter especial."))
-        if errores:
-            raise ValidationError(errores)
+    def clean_email(self):
+        email = self.cleaned_data.get("email")
+        if email and _email_en_uso(email):
+            raise ValidationError(_("Este correo ya se encuentra en uso."))
+        return email
+
+    def clean_acepta_sin_impedimentos(self):
+        if not self.cleaned_data.get("acepta_sin_impedimentos"):
+            raise ValidationError(
+                _("Es obligatorio marcar esta casilla para registrarse.")
+            )
+        return True
 
     def save(self, commit=True):
         usuario = super().save(commit=False)
@@ -88,9 +172,56 @@ class UsuarioCreacionForm(forms.ModelForm):
         return usuario
 
 
+def _email_en_uso(email, excluir_pk=None):
+    qs = Usuario.objects.filter(email__iexact=email)
+    if excluir_pk:
+        qs = qs.exclude(pk=excluir_pk)
+    return qs.exists()
+
+
+class UsuarioPerfilForm(forms.ModelForm):
+    """
+    Edición de la propia cuenta: el DNI no es modificable.
+    """
+
+    class Meta:
+        model = Usuario
+        fields = ("nombre", "apellido", "email", "fecha_nacimiento")
+        widgets = {
+            "nombre": forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "apellido": forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "email": forms.EmailInput(
+                attrs={"class": INPUT_CLASS, "autocomplete": "email"}
+            ),
+            "fecha_nacimiento": forms.DateInput(
+                attrs={"type": "date", "class": INPUT_CLASS}
+            ),
+        }
+
+    def clean_email(self):
+        email = self.cleaned_data.get("email")
+        if email and _email_en_uso(email, excluir_pk=self.instance.pk):
+            raise ValidationError(_("Este correo ya se encuentra en uso."))
+        return email
+
+    def clean_fecha_nacimiento(self):
+        fecha = self.cleaned_data.get("fecha_nacimiento")
+        if fecha:
+            validar_mayor_de_edad(fecha)
+        return fecha
+
+    def save(self, commit=True):
+        usuario = super().save(commit=False)
+        if self.instance.pk:
+            usuario.nro_documento = self.instance.nro_documento
+        if commit:
+            usuario.save()
+        return usuario
+
+
 class UsuarioModificacionForm(forms.ModelForm):
     """
-    Formulario para modificar datos de un usuario existente.
+    Formulario para modificar datos de un usuario existente (staff).
     La contraseña se gestiona por separado para mayor seguridad.
     """
 
@@ -112,8 +243,22 @@ class UsuarioModificacionForm(forms.ModelForm):
             "is_staff",
         )
         widgets = {
-            "fecha_nacimiento": forms.DateInput(attrs={"type": "date"}),
+            "nombre": forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "apellido": forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "nro_documento": forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "email": forms.EmailInput(
+                attrs={"class": INPUT_CLASS, "autocomplete": "email"}
+            ),
+            "fecha_nacimiento": forms.DateInput(
+                attrs={"type": "date", "class": INPUT_CLASS}
+            ),
         }
+
+    def clean_email(self):
+        email = self.cleaned_data.get("email")
+        if email and _email_en_uso(email, excluir_pk=self.instance.pk):
+            raise ValidationError(_("Este correo ya se encuentra en uso."))
+        return email
 
     def clean_fecha_nacimiento(self):
         fecha = self.cleaned_data.get("fecha_nacimiento")
@@ -131,16 +276,16 @@ class CambiarPasswordForm(forms.Form):
 
     password_actual = forms.CharField(
         label=_("Contraseña actual"),
-        widget=forms.PasswordInput(),
+        widget=forms.PasswordInput(attrs={"class": INPUT_CLASS, "autocomplete": "current-password"}),
     )
     password_nueva = forms.CharField(
         label=_("Nueva contraseña"),
-        widget=forms.PasswordInput(),
+        widget=forms.PasswordInput(attrs={"class": INPUT_CLASS, "autocomplete": "new-password"}),
         min_length=8,
     )
     password_confirmacion = forms.CharField(
         label=_("Confirmar nueva contraseña"),
-        widget=forms.PasswordInput(),
+        widget=forms.PasswordInput(attrs={"class": INPUT_CLASS, "autocomplete": "new-password"}),
     )
 
     def __init__(self, usuario, *args, **kwargs):
@@ -155,7 +300,7 @@ class CambiarPasswordForm(forms.Form):
 
     def clean_password_nueva(self):
         password = self.cleaned_data.get("password_nueva")
-        self._validar_fortaleza_password(password)
+        validar_fortaleza_password(password)
         return password
 
     def clean(self):
@@ -166,25 +311,58 @@ class CambiarPasswordForm(forms.Form):
             raise ValidationError(_("Las contraseñas nuevas no coinciden."))
         return cleaned
 
-    def _validar_fortaleza_password(self, password):
-        if not password:
-            return
-        errores = []
-        if not any(c.isupper() for c in password):
-            errores.append(_("Debe contener al menos una letra mayúscula."))
-        if not any(c.islower() for c in password):
-            errores.append(_("Debe contener al menos una letra minúscula."))
-        if not any(c.isdigit() for c in password):
-            errores.append(_("Debe contener al menos un número."))
-        if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in password):
-            errores.append(_("Debe contener al menos un carácter especial."))
-        if errores:
-            raise ValidationError(errores)
-
     def save(self):
         self.usuario.set_password(self.cleaned_data["password_nueva"])
         self.usuario.save()
         return self.usuario
+
+
+class RecuperarPasswordForm(PasswordResetForm):
+    """Solicitud de enlace de recuperación por email."""
+
+    email = forms.EmailField(
+        label=_("Email"),
+        widget=forms.EmailInput(
+            attrs={
+                "autocomplete": "email",
+                "placeholder": "tu@email.com",
+                "class": INPUT_CLASS,
+            }
+        ),
+    )
+
+
+class RestablecerPasswordForm(SetPasswordForm):
+    """Nueva contraseña tras abrir el enlace del correo."""
+
+    error_messages = {
+        **SetPasswordForm.error_messages,
+        "password_mismatch": _("Las contraseñas no coinciden."),
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ("new_password1", "new_password2"):
+            self.fields[name].widget.attrs.update(
+                {
+                    "autocomplete": "new-password",
+                    "placeholder": "••••••••",
+                    "class": INPUT_CLASS,
+                }
+            )
+        self.fields["new_password1"].help_text = PASSWORD_HELP_TEXT
+        self.fields["new_password1"].label = _("Nueva contraseña")
+        self.fields["new_password2"].label = _("Confirmar nueva contraseña")
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = self.cleaned_data.get("new_password1")
+        if password:
+            try:
+                validar_fortaleza_password(password)
+            except ValidationError as exc:
+                self.add_error("new_password1", exc)
+        return cleaned_data
 
 
 class UsuarioFiltroForm(forms.Form):
