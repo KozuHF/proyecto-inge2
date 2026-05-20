@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
+from .decorators import rol_requerido
 from .forms import (
     CambiarPasswordForm,
     UsuarioCreacionForm,
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 def vista_login(request):
     """Autenticación de usuario con el sistema de login de Django."""
     if request.user.is_authenticated:
-        return redirect("accounts:lista")
+        return redirect("home")
 
     form = AuthenticationForm(request, data=request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -35,7 +36,7 @@ def vista_login(request):
         login(request, usuario)
         logger.info("Login exitoso: %s (ID=%s)", usuario.email, usuario.pk)
         messages.success(request, _("Bienvenido, %s.") % usuario.get_short_name())
-        return redirect(request.GET.get("next", "accounts:lista"))
+        return redirect(request.GET.get("next", "home"))
 
     return render(request, "accounts/login.html", {"form": form})
 
@@ -53,7 +54,7 @@ def vista_logout(request):
 #  CRUD de usuarios
 # ──────────────────────────────────────────────────────────────────
 
-@login_required
+@rol_requerido(["admin", "employee"])
 def lista_usuarios(request):
     """
     Lista usuarios con búsqueda y filtros.
@@ -84,7 +85,7 @@ def lista_usuarios(request):
     })
 
 
-@login_required
+@rol_requerido(["admin", "employee"])
 def busqueda_global(request):
     """Búsqueda rápida por término libre sobre nombre, apellido, email y documento."""
     termino = request.GET.get("q", "").strip()
@@ -116,6 +117,12 @@ def registro_usuario(request):
 def detalle_usuario(request, pk):
     """Detalle de un usuario específico."""
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
+
+    # Restricción: Clientes normales solo ven su propia info; admins y empleados ven todo
+    if request.user.rol == 'user' and request.user.pk != usuario.pk:
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied
+
     return render(request, "accounts/detalle.html", {"usuario": usuario})
 
 
@@ -124,8 +131,8 @@ def editar_usuario(request, pk):
     """Edición de datos de un usuario (sin contraseña)."""
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
 
-    # Solo staff o el propio usuario pueden editar
-    if not request.user.is_staff and request.user.pk != usuario.pk:
+    # Solo admins, empleados o el propio usuario pueden editar
+    if request.user.rol not in ["admin", "employee"] and request.user.pk != usuario.pk:
         messages.error(request, _("No tenés permiso para editar este usuario."))
         return redirect("accounts:detalle", pk=pk)
 
@@ -154,14 +161,10 @@ def cambiar_password(request):
     return render(request, "accounts/cambiar_password.html", {"form": form})
 
 
-@login_required
+@rol_requerido("admin")
 @require_POST
 def desactivar_usuario(request, pk):
-    """Desactivación (soft delete) de un usuario. Solo staff."""
-    if not request.user.is_staff:
-        messages.error(request, _("No tenés permiso para realizar esta acción."))
-        return redirect("accounts:lista")
-
+    """Desactivación (soft delete) de un usuario. Solo administradores."""
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
     UsuarioRepository.desactivar(usuario)
     logger.warning("Usuario desactivado: %s (ID=%s) por %s", usuario.email, usuario.pk, request.user.email)
@@ -169,14 +172,10 @@ def desactivar_usuario(request, pk):
     return redirect("accounts:lista")
 
 
-@login_required
+@rol_requerido("admin")
 @require_POST
 def activar_usuario(request, pk):
-    """Reactiva un usuario desactivado. Solo staff."""
-    if not request.user.is_staff:
-        messages.error(request, _("No tenés permiso para realizar esta acción."))
-        return redirect("accounts:lista")
-
+    """Reactiva un usuario desactivado. Solo administradores."""
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
     UsuarioRepository.activar(usuario)
     logger.info("Usuario activado: %s (ID=%s) por %s", usuario.email, usuario.pk, request.user.email)

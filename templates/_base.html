@@ -76,9 +76,11 @@
                         <li>
                             <a href="/#deportes" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Deportes</a>
                         </li>
+                        {% if user.is_authenticated %}
                         <li>
-                            <a href="" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Turnos</a>
+                            <a href="{% url 'turnos:paso_actividad' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Turnos</a>
                         </li>
+                        {% endif %}
                         <li>
                             <a href="" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Contacto</a>
                         </li>
@@ -125,7 +127,7 @@
                     <ul class="space-y-2 text-sm">
                         <li><a href="{% url 'accounts:login' %}" class="hover:text-green-400 transition">Iniciar sesión</a></li>
                         <li><a href="{% url 'accounts:registro' %}" class="hover:text-green-400 transition">Registrarse</a></li>
-                        <li><a href="" class="hover:text-green-400 transition">Mis turnos</a></li>
+                        <li><a href="{% if user.is_authenticated %}{% url 'turnos:mis_reservas' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="hover:text-green-400 transition">Mis turnos</a></li>
                         <li><a href="" class="hover:text-green-400 transition">Contacto</a></li>
                     </ul>
                 </div>

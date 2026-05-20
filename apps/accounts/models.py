@@ -5,6 +5,12 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 
+class Roles(models.TextChoices):
+    ADMIN = "admin", _("Administrador")
+    EMPLOYEE = "employee", _("Empleado")
+    USER = "user", _("Cliente")
+
+
 def validar_mayor_de_edad(fecha_nacimiento):
     """
     Valida que el usuario tenga al menos 18 años al momento del registro.
@@ -55,6 +61,7 @@ class UsuarioManager(BaseUserManager):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
+        extra_fields.setdefault("rol", Roles.ADMIN)
 
         if extra_fields.get("is_staff") is not True:
             raise ValueError(_("El superusuario debe tener is_staff=True."))
@@ -98,6 +105,12 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     fecha_nacimiento = models.DateField(
         verbose_name=_("Fecha de nacimiento"),
         validators=[validar_mayor_de_edad],
+    )
+    rol = models.CharField(
+        max_length=20,
+        choices=Roles.choices,
+        default=Roles.USER,
+        verbose_name=_("Rol"),
     )
 
     # Campos requeridos por Django auth
