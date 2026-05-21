@@ -2,19 +2,24 @@ import logging
 
 from django.contrib import messages
 from django.contrib.auth import login, logout, update_session_auth_hash
-from django.contrib.auth.decorators import login_required, permission_required
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth import views as auth_views
+from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
 from .decorators import rol_requerido
 from .forms import (
     CambiarPasswordForm,
+    LoginForm,
+    RecuperarPasswordForm,
+    RestablecerPasswordForm,
     UsuarioCreacionForm,
     UsuarioFiltroForm,
     UsuarioModificacionForm,
+    UsuarioPerfilForm,
 )
 from .repository import UsuarioRepository
 
@@ -25,20 +30,64 @@ logger = logging.getLogger(__name__)
 #  Autenticación
 # ──────────────────────────────────────────────────────────────────
 
+def _redirect_mi_cuenta(usuario):
+    """Redirige a la edición del perfil del usuario autenticado."""
+    return redirect("accounts:editar", pk=usuario.pk)
+
+
 def vista_login(request):
     """Autenticación de usuario con el sistema de login de Django."""
     if request.user.is_authenticated:
-        return redirect("home")
+        return _redirect_mi_cuenta(request.user)
 
-    form = AuthenticationForm(request, data=request.POST or None)
+    form = LoginForm(request, data=request.POST or None)
     if request.method == "POST" and form.is_valid():
         usuario = form.get_user()
         login(request, usuario)
         logger.info("Login exitoso: %s (ID=%s)", usuario.email, usuario.pk)
         messages.success(request, _("Bienvenido, %s.") % usuario.get_short_name())
-        return redirect(request.GET.get("next", "home"))
+        next_url = request.GET.get("next")
+        if next_url:
+            return redirect(next_url)
+        return _redirect_mi_cuenta(usuario)
 
     return render(request, "accounts/login.html", {"form": form})
+
+
+class RecuperarPasswordView(auth_views.PasswordResetView):
+    """Solicita el email y envía el enlace de recuperación si está registrado."""
+
+    form_class = RecuperarPasswordForm
+    template_name = "accounts/password_reset_form.html"
+    email_template_name = "accounts/emails/password_reset_email.html"
+    subject_template_name = "accounts/emails/password_reset_subject.txt"
+    success_url = reverse_lazy("accounts:password_reset_done")
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        logger.info("Solicitud de recuperación de contraseña para: %s", form.cleaned_data["email"])
+        return response
+
+
+class RecuperarPasswordEnviadoView(auth_views.PasswordResetDoneView):
+    template_name = "accounts/password_reset_done.html"
+
+
+class RestablecerPasswordView(auth_views.PasswordResetConfirmView):
+    """Formulario de nueva contraseña al abrir el enlace del correo."""
+
+    form_class = RestablecerPasswordForm
+    template_name = "accounts/password_reset_confirm.html"
+    success_url = reverse_lazy("accounts:password_reset_complete")
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        logger.info("Contraseña restablecida vía enlace para usuario ID=%s", self.user.pk)
+        return response
+
+
+class RestablecerPasswordCompletoView(auth_views.PasswordResetCompleteView):
+    template_name = "accounts/password_reset_complete.html"
 
 
 @login_required
@@ -117,12 +166,6 @@ def registro_usuario(request):
 def detalle_usuario(request, pk):
     """Detalle de un usuario específico."""
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
-
-    # Restricción: Clientes normales solo ven su propia info; admins y empleados ven todo
-    if request.user.rol == 'user' and request.user.pk != usuario.pk:
-        from django.core.exceptions import PermissionDenied
-        raise PermissionDenied
-
     return render(request, "accounts/detalle.html", {"usuario": usuario})
 
 
@@ -131,19 +174,27 @@ def editar_usuario(request, pk):
     """Edición de datos de un usuario (sin contraseña)."""
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
 
-    # Solo admins, empleados o el propio usuario pueden editar
-    if request.user.rol not in ["admin", "employee"] and request.user.pk != usuario.pk:
+    # Solo staff o el propio usuario pueden editar
+    if not request.user.is_staff and request.user.pk != usuario.pk:
         messages.error(request, _("No tenés permiso para editar este usuario."))
         return redirect("accounts:detalle", pk=pk)
 
-    form = UsuarioModificacionForm(request.POST or None, instance=usuario)
+    es_propio_perfil = request.user.pk == usuario.pk
+    FormClass = UsuarioPerfilForm if es_propio_perfil else UsuarioModificacionForm
+    form = FormClass(request.POST or None, instance=usuario)
     if request.method == "POST" and form.is_valid():
         form.save()
         logger.info("Usuario editado: %s (ID=%s) por %s", usuario.email, usuario.pk, request.user.email)
         messages.success(request, _("Datos actualizados correctamente."))
+        if es_propio_perfil:
+            return redirect("accounts:editar", pk=pk)
         return redirect("accounts:detalle", pk=pk)
 
-    return render(request, "accounts/editar.html", {"form": form, "usuario": usuario})
+    return render(request, "accounts/editar.html", {
+        "form": form,
+        "usuario": usuario,
+        "es_propio_perfil": es_propio_perfil,
+    })
 
 
 @login_required
@@ -156,7 +207,7 @@ def cambiar_password(request):
         update_session_auth_hash(request, usuario)
         logger.info("Contraseña cambiada para usuario ID=%s", usuario.pk)
         messages.success(request, _("Contraseña actualizada correctamente."))
-        return redirect("accounts:detalle", pk=usuario.pk)
+        return redirect("accounts:editar", pk=usuario.pk)
 
     return render(request, "accounts/cambiar_password.html", {"form": form})
 

@@ -1,16 +1,91 @@
 {% extends "_base.html" %}
 
-{% block title %}Editar usuario - Club360{% endblock title %}
+{% block title %}Mi cuenta — ClubSport{% endblock title %}
 
-{% block content %}
+{% block body %}
+<div class="min-h-screen flex flex-col bg-gray-50">
 
-<h1>Editar usuario: {{ usuario.get_full_name }}</h1>
- 
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Guardar cambios</button>
-    <a href="{% url 'accounts:detalle' usuario.pk %}">Cancelar</a>
-</form>
+    <header class="bg-white border-b border-gray-200 shadow-sm">
+        <div class="max-w-screen-xl mx-auto flex items-center justify-between p-4">
+            <a href="{% url 'home' %}" class="flex items-center space-x-2">
+                <svg class="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18a8 8 0 110-16 8 8 0 010 16zm-1-11h2v6h-2zm0-4h2v2h-2z"/>
+                </svg>
+                <span class="text-2xl font-extrabold text-green-700 tracking-tight">Club<span class="text-gray-800">Sport</span></span>
+            </a>
+            <div class="flex items-center gap-4">
+                {% if request.user.is_staff and not es_propio_perfil %}
+                <a href="{% url 'accounts:detalle' usuario.pk %}" class="text-sm font-medium text-gray-600 hover:text-green-700">
+                    Ver detalle
+                </a>
+                {% endif %}
+                <a href="{% url 'accounts:logout' %}" class="text-sm font-medium text-gray-600 hover:text-green-700">
+                    Cerrar sesión
+                </a>
+            </div>
+        </div>
+    </header>
 
-{% endblock %}
+    <main class="flex-1 flex items-center justify-center px-4 py-10">
+        <div class="w-full max-w-lg">
+
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-extrabold text-gray-900 mb-2">
+                    {% if es_propio_perfil %}Mi cuenta{% else %}Editar usuario{% endif %}
+                </h1>
+                <p class="text-gray-500 text-sm">
+                    {% if es_propio_perfil %}
+                    Actualizá tus datos personales. El DNI no puede modificarse.
+                    {% else %}
+                    {{ usuario.get_full_name }}
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8">
+
+                {% include "accounts/_messages.html" %}
+
+                {% if form.non_field_errors %}
+                <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg" role="alert">
+                    {{ form.non_field_errors|join:", " }}
+                </div>
+                {% endif %}
+
+                {% if es_propio_perfil %}
+                <div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Número de documento</p>
+                    <p class="text-sm font-semibold text-gray-900">{{ usuario.nro_documento }}</p>
+                </div>
+                {% endif %}
+
+                <form method="post" novalidate class="space-y-1">
+                    {% csrf_token %}
+                    {% for field in form %}
+                        {% if field.name != "password" or request.user.is_staff %}
+                            {% include "accounts/_form_field.html" with field=field %}
+                        {% endif %}
+                    {% endfor %}
+
+                    <button type="submit"
+                        class="w-full mt-2 text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition">
+                        Guardar cambios
+                    </button>
+                </form>
+
+                {% if es_propio_perfil %}
+                <p class="mt-6 text-center text-sm text-gray-500">
+                    <a href="{% url 'accounts:cambiar_password' %}" class="font-semibold text-green-600 hover:text-green-700">
+                        Cambiar contraseña
+                    </a>
+                </p>
+                {% endif %}
+            </div>
+
+            <p class="mt-6 text-center">
+                <a href="{% url 'home' %}" class="text-sm text-gray-500 hover:text-green-600 transition">← Volver al inicio</a>
+            </p>
+        </div>
+    </main>
+</div>
+{% endblock body %}

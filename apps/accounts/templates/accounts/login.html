@@ -1,59 +1,71 @@
 {% extends "_base.html" %}
 
-{% block title %}Iniciar sesión - Club360{% endblock title %}
+{% block title %}Iniciar sesión — ClubSport{% endblock title %}
 
-{% block content %}
-<section class="py-12 px-4 md:py-20 flex justify-center items-center bg-gradient-to-br from-green-50 via-gray-50 to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex-grow w-full">
-    <div class="w-full max-w-md bg-white rounded-2xl shadow-xl dark:border md:mt-0 xl:p-0 dark:bg-gray-800 dark:border-gray-700 border border-gray-100">
-        <div class="p-6 space-y-4 md:space-y-6 sm:p-8">
-            <div class="text-center">
-                <h1 class="text-2xl font-extrabold leading-tight tracking-tight text-gray-900 md:text-3xl dark:text-white mb-2">
-                    Bienvenido de nuevo
-                </h1>
-                <p class="text-gray-500 dark:text-gray-400 text-sm">Ingresá tus credenciales para continuar.</p>
+{% block body %}
+<div class="min-h-screen flex flex-col bg-gray-50">
+
+    <header class="bg-white border-b border-gray-200 shadow-sm">
+        <div class="max-w-screen-xl mx-auto flex items-center justify-between p-4">
+            <a href="{% url 'home' %}" class="flex items-center space-x-2">
+                <svg class="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18a8 8 0 110-16 8 8 0 010 16zm-1-11h2v6h-2zm0-4h2v2h-2z"/>
+                </svg>
+                <span class="text-2xl font-extrabold text-green-700 tracking-tight">Club<span class="text-gray-800">Sport</span></span>
+            </a>
+            <a href="{% url 'accounts:registro' %}" class="text-sm font-medium text-green-600 hover:text-green-700">
+                Crear cuenta
+            </a>
+        </div>
+    </header>
+
+    <main class="flex-1 flex items-center justify-center px-4 py-12">
+        <div class="w-full max-w-md">
+
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-extrabold text-gray-900 mb-2">Bienvenido de nuevo</h1>
+                <p class="text-gray-500 text-sm">Ingresá con tu email para reservar turnos y gestionar tu cuenta.</p>
             </div>
-            
-            <form method="post" class="space-y-5
-                [&_.helptext]:text-xs [&_.helptext]:text-gray-500 [&_.helptext]:block [&_.helptext]:mt-1.5
-                [&_ul.errorlist]:text-red-600 [&_ul.errorlist]:text-sm [&_ul.errorlist]:mt-1.5 [&_ul.errorlist]:list-disc [&_ul.errorlist]:ml-4
-                " novalidate>
-                
-                {% csrf_token %}
+
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8">
+
+                {% include "accounts/_messages.html" %}
 
                 {% if form.non_field_errors %}
-                    <div class="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400" role="alert">
-                        {% for error in form.non_field_errors %}
-                            <span class="font-medium">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-                
-                <div class="grid grid-cols-1 gap-4">
-                    {% for field in form %}
-                        <div>
-                            <label for="{{ field.id_for_label }}" class="block mb-1.5 text-sm font-semibold text-gray-900 dark:text-white">{{ field.label }} {% if field.field.required %}<span class="text-red-600">*</span>{% endif %}</label>
-                            <div class="[&_input]:bg-gray-50 [&_input]:border [&_input]:border-gray-300 [&_input]:text-gray-900 [&_input]:sm:text-sm [&_input]:rounded-lg [&_input]:focus:ring-green-600 [&_input]:focus:border-green-600 [&_input]:block [&_input]:w-full [&_input]:p-2.5 [&_input]:dark:bg-gray-700 [&_input]:dark:border-gray-600 [&_input]:dark:placeholder-gray-400 [&_input]:dark:text-white [&_input]:dark:focus:ring-green-500 [&_input]:dark:focus:border-green-500 [&_input]:transition-colors">
-                                {{ field }}
-                            </div>
-                            {% if field.help_text %}
-                                <span class="helptext">{{ field.help_text }}</span>
-                            {% endif %}
-                            {% for error in field.errors %}
-                                <ul class="errorlist"><li>{{ error }}</li></ul>
-                            {% endfor %}
-                        </div>
-                    {% endfor %}
+                <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg" role="alert">
+                    {{ form.non_field_errors|join:", " }}
                 </div>
+                {% endif %}
 
-                <button type="submit" class="w-full text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-bold rounded-lg text-sm px-5 py-3 text-center shadow-md hover:shadow-lg dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800 transition-all mt-6">
-                    Ingresar
-                </button>
-                
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400 text-center mt-6">
-                    ¿No tenés cuenta? <a href="{% url 'accounts:registro' %}" class="text-green-600 hover:underline hover:text-green-700 dark:text-green-500">Registrate gratis acá</a>
+                <form method="post" novalidate class="space-y-1">
+                    {% csrf_token %}
+                    {% include "accounts/_form_field.html" with field=form.username %}
+                    {% include "accounts/_form_field.html" with field=form.password %}
+
+                    <p class="text-right -mt-2 mb-4">
+                        <a href="{% url 'accounts:password_reset' %}" class="text-sm font-medium text-green-600 hover:text-green-700">
+                            Olvidé mi contraseña
+                        </a>
+                    </p>
+
+                    <button type="submit"
+                        class="w-full mt-2 text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition">
+                        Ingresar
+                    </button>
+                </form>
+
+                <p class="mt-6 text-center text-sm text-gray-500">
+                    ¿No tenés cuenta?
+                    <a href="{% url 'accounts:registro' %}" class="font-semibold text-green-600 hover:text-green-700">
+                        Registrate gratis
+                    </a>
                 </p>
-            </form>
+            </div>
+
+            <p class="mt-6 text-center">
+                <a href="{% url 'home' %}" class="text-sm text-gray-500 hover:text-green-600 transition">← Volver al inicio</a>
+            </p>
         </div>
-    </div>
-</section>
-{% endblock content %}
+    </main>
+</div>
+{% endblock body %}
