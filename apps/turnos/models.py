@@ -152,6 +152,11 @@ class Reserva(models.Model):
         INDIVIDUAL = "individual", _("Turno individual")
         MENSUAL    = "mensual",    _("Mensual (mismo día y hora, todo el mes)")
 
+    class EstadoPago(models.TextChoices):
+        PENDIENTE = "pendiente", _("Pago pendiente")
+        SENADO    = "senado",    _("Señado")
+        PAGADO    = "pagado",    _("Pagado")
+
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -194,22 +199,24 @@ class Reserva(models.Model):
         verbose_name=_("Fecha de cancelación"),
     )
 
-    # ── Gancho para pagos futuros ─────────────────────────────────────────────
-    # precio_abonado = models.DecimalField(
-    #     max_digits=8, decimal_places=2,
-    #     null=True, blank=True,
-    #     verbose_name=_("Precio abonado"),
-    # )
-    # referencia_pago = models.CharField(
-    #     max_length=100,
-    #     blank=True,
-    #     verbose_name=_("Referencia de pago"),
-    # )
-    # medio_pago = models.CharField(
-    #     max_length=30,
-    #     blank=True,
-    #     verbose_name=_("Medio de pago"),
-    # )
+    estado_pago = models.CharField(
+        max_length=10,
+        choices=EstadoPago.choices,
+        default=EstadoPago.PENDIENTE,
+        verbose_name=_("Estado de pago"),
+    )
+    precio_abonado = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name=_("Precio abonado"),
+    )
+    referencia_pago = models.CharField(
+        max_length=40,
+        blank=True,
+        verbose_name=_("Referencia de pago"),
+    )
 
     class Meta:
         verbose_name        = _("Reserva")
@@ -226,6 +233,33 @@ class Reserva(models.Model):
 
     def __str__(self):
         return f"{self.usuario} – {self.turno} [{self.get_estado_display()}]"
+
+    @property
+    def esta_pagada(self) -> bool:
+        return self.estado_pago == self.EstadoPago.PAGADO
+
+    @property
+    def esta_senada(self) -> bool:
+        return self.estado_pago == self.EstadoPago.SENADO
+
+    @property
+    def puede_pagar(self) -> bool:
+        return self.estado_pago in (self.EstadoPago.PENDIENTE, self.EstadoPago.SENADO)
+
+    @property
+    def monto_total(self):
+        return self.turno.actividad.precio_turno
+
+    @property
+    def monto_sena(self):
+        from decimal import Decimal
+        return (self.monto_total * Decimal("0.5")).quantize(Decimal("0.01"))
+
+    @property
+    def monto_saldo(self):
+        from decimal import Decimal
+        abonado = self.precio_abonado or Decimal("0")
+        return (self.monto_total - abonado).quantize(Decimal("0.01"))
 
     # ── Lógica de negocio ─────────────────────────────────────────────────────
 

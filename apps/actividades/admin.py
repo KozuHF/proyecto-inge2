@@ -13,8 +13,8 @@ class ActividadAdmin(admin.ModelAdmin):
     No se pueden crear ni eliminar actividades desde aquí.
     """
 
-    list_display  = ("get_nombre_display", "cupos")
-    list_editable = ("cupos",)
+    list_display  = ("get_nombre_display", "cupos", "precio_turno")
+    list_editable = ("cupos", "precio_turno")
     ordering      = ("nombre",)
 
     # ── Bloquear creación / eliminación ──────────────────────────────────────
