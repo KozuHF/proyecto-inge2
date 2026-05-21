@@ -1,0 +1,126 @@
+{% extends "_base.html" %}
+{% load i18n %}
+
+{% block title %}Mis reservas{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-4xl mx-auto">
+
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-3xl font-extrabold text-gray-900">Mis reservas</h1>
+      <a href="{% url 'turnos:paso_actividad' %}"
+        class="text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-2.5 transition">
+        + Nueva reserva
+      </a>
+    </div>
+
+    {% if messages %}
+      {% for msg in messages %}
+        <div class="mb-4 p-4 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <h2 class="text-lg font-bold text-gray-800 mb-3">Reservas activas</h2>
+    {% if reservas_activas %}
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+        <table class="w-full text-sm text-left">
+          <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3">Actividad</th>
+              <th class="px-4 py-3">Fecha</th>
+              <th class="px-4 py-3">Horario</th>
+              <th class="px-4 py-3">Estado</th>
+              <th class="px-4 py-3">Tipo</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for reserva in reservas_activas %}
+              <tr class="{% if reserva.estado == 'en_espera' %}bg-yellow-50{% endif %}">
+                <td class="px-4 py-3 font-medium text-gray-800">{{ reserva.turno.actividad }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ reserva.turno.fecha }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ reserva.turno.hora|stringformat:"02d" }}:00 – {{ reserva.turno.hora|add:1|stringformat:"02d" }}:00</td>
+                <td class="px-4 py-3">
+                  {% if reserva.estado == 'confirmada' %}
+                    <span class="px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">Confirmada</span>
+                  {% else %}
+                    <span class="px-2 py-1 text-xs font-semibold text-yellow-700 bg-yellow-100 rounded-full">En espera</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3 text-gray-500">{{ reserva.get_tipo_reserva_display }}</td>
+                <td class="px-4 py-3">
+                  <form method="post" action="{% url 'turnos:cancelar_reserva' reserva.pk %}"
+                        onsubmit="return confirm('¿Confirmás la cancelación?')">
+                    {% csrf_token %}
+                    <button type="submit" class="text-xs text-red-600 hover:text-red-800 font-semibold">Cancelar</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-gray-500 mb-8">No tenés reservas activas.</p>
+    {% endif %}
+
+    {% if grupos_mensuales %}
+      <h2 class="text-lg font-bold text-gray-800 mb-3">Grupos de reserva mensual</h2>
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+        <table class="w-full text-sm text-left">
+          <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3">Grupo</th>
+              <th class="px-4 py-3">Reservas</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for grupo in grupos_mensuales %}
+              <tr>
+                <td class="px-4 py-3 font-medium text-gray-800">{{ grupo }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ grupo.reservas.count }}</td>
+                <td class="px-4 py-3">
+                  <form method="post" action="{% url 'turnos:cancelar_grupo_mensual' grupo.pk %}"
+                        onsubmit="return confirm('¿Cancelar todas las reservas del grupo?')">
+                    {% csrf_token %}
+                    <button type="submit" class="text-xs text-red-600 hover:text-red-800 font-semibold">Cancelar grupo</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    {% if reservas_canceladas %}
+      <h2 class="text-lg font-bold text-gray-800 mb-3">Historial</h2>
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm text-left">
+          <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3">Actividad</th>
+              <th class="px-4 py-3">Fecha del turno</th>
+              <th class="px-4 py-3">Horario</th>
+              <th class="px-4 py-3">Cancelada el</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for reserva in reservas_canceladas %}
+              <tr class="text-gray-400">
+                <td class="px-4 py-3">{{ reserva.turno.actividad }}</td>
+                <td class="px-4 py-3">{{ reserva.turno.fecha }}</td>
+                <td class="px-4 py-3">{{ reserva.turno.hora|stringformat:"02d" }}:00</td>
+                <td class="px-4 py-3">{{ reserva.fecha_cancelacion|date:"d/m/Y H:i" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock content %}

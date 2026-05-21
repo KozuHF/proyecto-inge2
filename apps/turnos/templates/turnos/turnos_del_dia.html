@@ -1,0 +1,73 @@
+{% extends "_base.html" %}
+{% load i18n %}
+
+{% block title %}Turnos del día{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-4xl mx-auto">
+
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-3xl font-extrabold text-gray-900">Turnos del día</h1>
+      <form method="get" class="flex items-center gap-2">
+        <input type="date" name="fecha" value="{{ fecha|date:'Y-m-d' }}"
+          class="border border-gray-300 rounded-lg text-sm px-3 py-2">
+        <button type="submit"
+          class="border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-4 py-2 transition">
+          Ver
+        </button>
+      </form>
+    </div>
+
+    {% if messages %}
+      {% for msg in messages %}
+        <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% if turnos %}
+      <div class="space-y-4">
+        {% for turno in turnos %}
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-bold text-gray-800">
+                {{ turno.hora|stringformat:"02d" }}:00 – {{ turno.hora|add:1|stringformat:"02d" }}:00
+                · {{ turno.actividad }}
+              </h3>
+              <span class="px-3 py-1 text-sm font-semibold rounded-full
+                {% if turno.esta_lleno %}text-red-700 bg-red-100{% else %}text-green-700 bg-green-100{% endif %}">
+                {{ turno.cupos_ocupados }}/{{ turno.cupos_totales }} cupos
+              </span>
+            </div>
+
+            <h4 class="text-sm font-semibold text-gray-500 uppercase mb-2">Confirmados</h4>
+            <ul class="space-y-1 mb-4">
+              {% for reserva in turno.reservas.all %}
+                {% if reserva.estado == 'confirmada' %}
+                  <li class="text-sm text-gray-700">{{ reserva.usuario.get_full_name }} &lt;{{ reserva.usuario.email }}&gt;</li>
+                {% endif %}
+              {% empty %}
+                <li class="text-sm text-gray-400 italic">Sin reservas confirmadas.</li>
+              {% endfor %}
+            </ul>
+
+            {% with espera=turno.lista_espera %}
+              {% if espera %}
+                <h4 class="text-sm font-semibold text-yellow-600 uppercase mb-2">Lista de espera</h4>
+                <ol class="space-y-1 list-decimal list-inside">
+                  {% for reserva in espera %}
+                    <li class="text-sm text-gray-700">{{ reserva.usuario.get_full_name }} &lt;{{ reserva.usuario.email }}&gt;</li>
+                  {% endfor %}
+                </ol>
+              {% endif %}
+            {% endwith %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-gray-500">No hay turnos registrados para esta fecha.</p>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock content %}
