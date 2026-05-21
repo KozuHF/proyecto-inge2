@@ -57,6 +57,7 @@ pnpm-debug.log*
 # Build outputs (Tailwind / frontend)
 dist/
 build/
+static/src/output.css
 
 # Archivos de cache
 .cache/
