@@ -40,7 +40,6 @@ def vista_login(request):
         usuario = form.get_user()
         login(request, usuario)
         logger.info("Login exitoso: %s (ID=%s)", usuario.email, usuario.pk)
-        messages.success(request, _("Bienvenido, %s.") % usuario.get_short_name())
         next_url = request.GET.get("next")
         if next_url:
             return redirect(next_url)
