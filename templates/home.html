@@ -23,7 +23,7 @@
         </p>
         <div class="flex flex-col sm:flex-row justify-center gap-3">
             {% if user.is_authenticated %}
-                <a href="{% url 'accounts:lista' %}"
+                <a href="{% url 'turnos:paso_actividad' %}"
                    class="inline-flex items-center justify-center px-6 py-3 text-base font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 focus:ring-4 focus:ring-green-300 transition">
                     Reservar turno
                     <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -155,7 +155,7 @@
                 Registrarse gratis
             </a>
         {% else %}
-            <a href="{% url 'accounts:lista' %}"
+            <a href="{% url 'turnos:paso_actividad' %}"
                class="inline-flex items-center justify-center px-8 py-3 text-base font-bold text-green-700 bg-white rounded-lg hover:bg-green-50 focus:ring-4 focus:ring-green-300 transition shadow">
                 Ver turnos disponibles
             </a>
@@ -165,4 +165,4 @@
 <!-- =================== FIN CTA BANNER =================== -->
 
 {% endblock content %}
-
+

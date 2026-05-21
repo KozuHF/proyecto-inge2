@@ -41,7 +41,7 @@
                 <!-- Botones auth + hamburger -->
                 <div class="flex items-center space-x-3 md:order-2 rtl:space-x-reverse">
                     {% if user.is_authenticated %}
-                        <a href="{% url 'accounts:lista' %}" class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-sm px-4 py-2 text-center">
+                        <a href="{% url 'accounts:editar' user.pk %}" class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-sm px-4 py-2 text-center">
                             Mi cuenta
                         </a>
                         <a href="{% url 'accounts:logout' %}" class="text-gray-700 hover:text-green-600 font-medium text-sm">
@@ -78,7 +78,25 @@
                         </li>
                         {% if user.is_authenticated %}
                         <li>
-                            <a href="{% url 'turnos:paso_actividad' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Turnos</a>
+                            <a href="{% url 'turnos:paso_actividad' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Reservar turno</a>
+                        </li>
+                        <li>
+                            <a href="{% url 'turnos:mis_reservas' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Mis reservas</a>
+                        </li>
+                        {% endif %}
+                        {% if user.is_staff %}
+                        <li>
+                            <a href="{% url 'turnos:turnos_del_dia' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Turnos del día</a>
+                        </li>
+                        {% endif %}
+                        {% if user.rol == 'admin' or user.rol == 'employee' %}
+                        <li>
+                            <a href="{% url 'accounts:lista' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Usuarios</a>
+                        </li>
+                        {% endif %}
+                        {% if user.is_staff %}
+                        <li>
+                            <a href="{% url 'admin:index' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Panel admin</a>
                         </li>
                         {% endif %}
                         <li>

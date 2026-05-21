@@ -8,6 +8,26 @@ urlpatterns = [
     path("login/",   views.vista_login,   name="login"),
     path("logout/",  views.vista_logout,  name="logout"),
     path("registro/", views.registro_usuario, name="registro"),
+    path(
+        "olvide-password/",
+        views.RecuperarPasswordView.as_view(),
+        name="password_reset",
+    ),
+    path(
+        "olvide-password/enviado/",
+        views.RecuperarPasswordEnviadoView.as_view(),
+        name="password_reset_done",
+    ),
+    path(
+        "restablecer-password/<uidb64>/<token>/",
+        views.RestablecerPasswordView.as_view(),
+        name="password_reset_confirm",
+    ),
+    path(
+        "restablecer-password/completado/",
+        views.RestablecerPasswordCompletoView.as_view(),
+        name="password_reset_complete",
+    ),
 
     # CRUD
     path("",                          views.lista_usuarios,    name="lista"),
