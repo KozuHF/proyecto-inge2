@@ -12,7 +12,7 @@
     <tr><th>Apellido</th><td>{{ usuario.apellido }}</td></tr>
     <tr><th>Email</th><td>{{ usuario.email }}</td></tr>
     <tr><th>Nro. documento</th><td>{{ usuario.nro_documento }}</td></tr>
-    <tr><th>Fecha de nacimiento</th><td>{{ usuario.fecha_nacimiento }}</td></tr>
+    <tr><th>Fecha de nacimiento</th><td>{{ usuario.fecha_nacimiento|date:"d/m/Y" }}</td></tr>
     <tr><th>Activo</th><td>{{ usuario.is_active|yesno:"Sí,No" }}</td></tr>
     <tr><th>Staff</th><td>{{ usuario.is_staff|yesno:"Sí,No" }}</td></tr>
     <tr><th>Fecha de registro</th><td>{{ usuario.date_joined }}</td></tr>

@@ -129,7 +129,10 @@ class UsuarioCreacionForm(forms.ModelForm):
             "email": forms.EmailInput(
                 attrs={"class": INPUT_CLASS, "placeholder": "tu@email.com", "autocomplete": "email"}
             ),
-            "fecha_nacimiento": forms.DateInput(attrs={"type": "date", "class": INPUT_CLASS}),
+            "fecha_nacimiento": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"type": "date", "class": INPUT_CLASS}
+            ),
         }
 
     def clean_fecha_nacimiento(self):
@@ -194,6 +197,7 @@ class UsuarioPerfilForm(forms.ModelForm):
                 attrs={"class": INPUT_CLASS, "autocomplete": "email"}
             ),
             "fecha_nacimiento": forms.DateInput(
+                format="%Y-%m-%d",
                 attrs={"type": "date", "class": INPUT_CLASS}
             ),
         }
@@ -250,6 +254,7 @@ class UsuarioModificacionForm(forms.ModelForm):
                 attrs={"class": INPUT_CLASS, "autocomplete": "email"}
             ),
             "fecha_nacimiento": forms.DateInput(
+                format="%Y-%m-%d",
                 attrs={"type": "date", "class": INPUT_CLASS}
             ),
         }
