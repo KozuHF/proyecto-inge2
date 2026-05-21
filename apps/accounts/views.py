@@ -30,26 +30,20 @@ logger = logging.getLogger(__name__)
 #  Autenticación
 # ──────────────────────────────────────────────────────────────────
 
-def _redirect_mi_cuenta(usuario):
-    """Redirige a la edición del perfil del usuario autenticado."""
-    return redirect("accounts:editar", pk=usuario.pk)
-
-
 def vista_login(request):
     """Autenticación de usuario con el sistema de login de Django."""
     if request.user.is_authenticated:
-        return _redirect_mi_cuenta(request.user)
+        return redirect("home")
 
     form = LoginForm(request, data=request.POST or None)
     if request.method == "POST" and form.is_valid():
         usuario = form.get_user()
         login(request, usuario)
         logger.info("Login exitoso: %s (ID=%s)", usuario.email, usuario.pk)
-        messages.success(request, _("Bienvenido, %s.") % usuario.get_short_name())
         next_url = request.GET.get("next")
         if next_url:
             return redirect(next_url)
-        return _redirect_mi_cuenta(usuario)
+        return redirect("home")
 
     return render(request, "accounts/login.html", {"form": form})
 

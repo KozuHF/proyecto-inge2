@@ -15,8 +15,13 @@
             🏆 Reservá online en segundos
         </span>
         <h1 class="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white sm:text-5xl md:text-6xl mb-4 leading-tight">
-            Tu club deportivo,<br>
-            <span class="text-green-600">siempre listo para vos</span>
+            {% if user.is_authenticated %}
+                ¡Hola, {{ user.nombre }}!<br>
+                <span class="text-green-600">¿Listo para entrenar hoy?</span>
+            {% else %}
+                Tu club deportivo,<br>
+                <span class="text-green-600">siempre listo para vos</span>
+            {% endif %}
         </h1>
         <p class="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto mb-8">
             Fútbol, básquet, tenis y vóley. Instalaciones dedicadas para cada deporte y clases dirigidas por instructores profesionales. Elegí tu actividad y reservá tu lugar.
