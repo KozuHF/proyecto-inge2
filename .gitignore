@@ -24,6 +24,7 @@ db.sqlite3-journal
 
 # Archivos de logs
 *.log
+logs/*.log
 
 # Archivos estáticos generados
 staticfiles/
