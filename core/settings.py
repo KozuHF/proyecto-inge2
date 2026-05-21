@@ -186,7 +186,7 @@ STATICFILES_FINDERS = ('compressor.finders.CompressorFinder',)
 #  En desarrollo los mensajes se imprimen en consola.
 # ─────────────────────────────────────────────
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'ClubSport <noreply@clubsport.local>'
+DEFAULT_FROM_EMAIL = 'Club360 <noreply@club360.local>'
 
 #redirección del login
 

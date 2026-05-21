@@ -66,7 +66,7 @@
                     <span class="text-3xl">⚽</span>
                 </div>
                 <h3 class="text-xl font-bold text-gray-900 mb-1">Fútbol</h3>
-                <p class="text-sm text-gray-500 mb-4">Cancha de césped sintético de alta calidad. Sumate a nuestras clases grupales con instructores profesionales.</p>
+                <p class="text-sm text-gray-500 mb-4">Cancha de césped sintético de alta calidad. Sumate a nuestras clases grupales.</p>
                 <a href="{% if user.is_authenticated %}{% url 'turnos:paso_actividad' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-green-600 hover:underline">Reservar turno →</a>
             </div>
 
