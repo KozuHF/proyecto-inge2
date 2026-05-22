@@ -28,7 +28,7 @@
         </p>
         <div class="flex flex-col sm:flex-row justify-center gap-3">
             {% if user.is_authenticated %}
-                <a href="{% url 'turnos:paso_actividad' %}"
+                <a href="{% url 'turnos:paso_tipo_abono' %}"
                    class="inline-flex items-center justify-center px-6 py-3 text-base font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 focus:ring-4 focus:ring-green-300 transition">
                     Reservar turno
                     <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -72,7 +72,7 @@
                 </div>
                 <h3 class="text-xl font-bold text-gray-900 mb-1">Fútbol</h3>
                 <p class="text-sm text-gray-500 mb-4">Cancha de césped sintético de alta calidad. Sumate a nuestras clases grupales con instructores profesionales.</p>
-                <a href="{% if user.is_authenticated %}{% url 'turnos:paso_actividad' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-green-600 hover:underline">Reservar turno →</a>
+                <a href="{% if user.is_authenticated %}{% url 'turnos:paso_tipo_abono' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-green-600 hover:underline">Reservar turno →</a>
             </div>
 
             <!-- Básquet -->
@@ -82,7 +82,7 @@
                 </div>
                 <h3 class="text-xl font-bold text-gray-900 mb-1">Básquet</h3>
                 <p class="text-sm text-gray-500 mb-4">Cancha cubierta con aros reglamentarios. Clases de técnica y entrenamientos dirigidos por instructores especializados.</p>
-                <a href="{% if user.is_authenticated %}{% url 'turnos:paso_actividad' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-orange-600 hover:underline">Reservar turno →</a>
+                <a href="{% if user.is_authenticated %}{% url 'turnos:paso_tipo_abono' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-orange-600 hover:underline">Reservar turno →</a>
             </div>
 
             <!-- Tenis -->
@@ -92,7 +92,7 @@
                 </div>
                 <h3 class="text-xl font-bold text-gray-900 mb-1">Tenis</h3>
                 <p class="text-sm text-gray-500 mb-4">Cancha de polvo de ladrillo impecable. Tomá clases individuales o grupales con instructores profesionales para mejorar tu juego.</p>
-                <a href="{% if user.is_authenticated %}{% url 'turnos:paso_actividad' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-blue-600 hover:underline">Reservar turno →</a>
+                <a href="{% if user.is_authenticated %}{% url 'turnos:paso_tipo_abono' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-blue-600 hover:underline">Reservar turno →</a>
             </div>
 
             <!-- Vóley -->
@@ -102,7 +102,7 @@
                 </div>
                 <h3 class="text-xl font-bold text-gray-900 mb-1">Vóley</h3>
                 <p class="text-sm text-gray-500 mb-4">Cancha reglamentaria acondicionada. Entrenamientos dinámicos y clases grupales con instructores del club.</p>
-                <a href="{% if user.is_authenticated %}{% url 'turnos:paso_actividad' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-yellow-600 hover:underline">Reservar turno →</a>
+                <a href="{% if user.is_authenticated %}{% url 'turnos:paso_tipo_abono' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="text-sm font-semibold text-yellow-600 hover:underline">Reservar turno →</a>
             </div>
 
         </div>
@@ -160,7 +160,7 @@
                 Registrarse gratis
             </a>
         {% else %}
-            <a href="{% url 'turnos:paso_actividad' %}"
+            <a href="{% url 'turnos:paso_tipo_abono' %}"
                class="inline-flex items-center justify-center px-8 py-3 text-base font-bold text-green-700 bg-white rounded-lg hover:bg-green-50 focus:ring-4 focus:ring-green-300 transition shadow">
                 Ver turnos disponibles
             </a>

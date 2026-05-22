@@ -1,32 +1,50 @@
-<ol class="flex items-center w-full mb-6 text-xs font-semibold text-center text-gray-500">
+<ol class="flex items-center w-full mb-6 text-xs font-semibold text-center text-gray-500 flex-wrap gap-y-2">
   <li class="flex items-center {% if paso_actual >= 1 %}text-green-600{% endif %}">
     <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
       {% if paso_actual > 1 %}border-green-600 bg-green-600 text-white
       {% elif paso_actual == 1 %}border-green-600 text-green-600
       {% else %}border-gray-300 text-gray-400{% endif %}">1</span>
-    <span class="hidden sm:inline-flex ml-2 mr-2">Actividad</span>
-    <span class="flex-1 border-t-2 {% if paso_actual > 1 %}border-green-600{% else %}border-gray-200{% endif %} mx-2 w-8"></span>
+    <span class="hidden sm:inline-flex ml-1 mr-1">Abono</span>
+    <span class="flex-1 border-t-2 {% if paso_actual > 1 %}border-green-600{% else %}border-gray-200{% endif %} mx-1 w-4"></span>
   </li>
   <li class="flex items-center {% if paso_actual >= 2 %}text-green-600{% endif %}">
     <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
       {% if paso_actual > 2 %}border-green-600 bg-green-600 text-white
       {% elif paso_actual == 2 %}border-green-600 text-green-600
       {% else %}border-gray-300 text-gray-400{% endif %}">2</span>
-    <span class="hidden sm:inline-flex ml-2 mr-2">Fecha</span>
-    <span class="flex-1 border-t-2 {% if paso_actual > 2 %}border-green-600{% else %}border-gray-200{% endif %} mx-2 w-8"></span>
+    <span class="hidden sm:inline-flex ml-1 mr-1">Actividad</span>
+    <span class="flex-1 border-t-2 {% if paso_actual > 2 %}border-green-600{% else %}border-gray-200{% endif %} mx-1 w-4"></span>
   </li>
   <li class="flex items-center {% if paso_actual >= 3 %}text-green-600{% endif %}">
     <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
       {% if paso_actual > 3 %}border-green-600 bg-green-600 text-white
       {% elif paso_actual == 3 %}border-green-600 text-green-600
       {% else %}border-gray-300 text-gray-400{% endif %}">3</span>
-    <span class="hidden sm:inline-flex ml-2 mr-2">Horario</span>
-    <span class="flex-1 border-t-2 {% if paso_actual > 3 %}border-green-600{% else %}border-gray-200{% endif %} mx-2 w-8"></span>
+    <span class="hidden sm:inline-flex ml-1 mr-1">Fecha</span>
+    <span class="flex-1 border-t-2 {% if paso_actual > 3 %}border-green-600{% else %}border-gray-200{% endif %} mx-1 w-4"></span>
   </li>
-  <li class="flex items-center {% if paso_actual == 4 %}text-green-600{% endif %}">
+  <li class="flex items-center {% if paso_actual >= 4 %}text-green-600{% endif %}">
     <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
-      {% if paso_actual == 4 %}border-green-600 text-green-600
+      {% if paso_actual > 4 %}border-green-600 bg-green-600 text-white
+      {% elif paso_actual == 4 %}border-green-600 text-green-600
       {% else %}border-gray-300 text-gray-400{% endif %}">4</span>
-    <span class="hidden sm:inline-flex ml-2">Confirmar</span>
+    <span class="hidden sm:inline-flex ml-1 mr-1">Horario</span>
+    <span class="flex-1 border-t-2 {% if paso_actual > 4 %}border-green-600{% else %}border-gray-200{% endif %} mx-1 w-4"></span>
+  </li>
+  <li class="flex items-center {% if paso_actual >= 5 %}text-green-600{% endif %}">
+    <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
+      {% if paso_actual > 5 %}border-green-600 bg-green-600 text-white
+      {% elif paso_actual == 5 %}border-green-600 text-green-600
+      {% else %}border-gray-300 text-gray-400{% endif %}">5</span>
+    <span class="hidden sm:inline-flex ml-1 mr-1">
+      {% if modo == 'varios' %}Días{% else %}Confirmar{% endif %}
+    </span>
+    <span class="flex-1 border-t-2 {% if paso_actual > 5 %}border-green-600{% else %}border-gray-200{% endif %} mx-1 w-4"></span>
+  </li>
+  <li class="flex items-center {% if paso_actual >= 6 %}text-green-600{% endif %}">
+    <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
+      {% if paso_actual == 6 %}border-green-600 text-green-600
+      {% else %}border-gray-300 text-gray-400{% endif %}">6</span>
+    <span class="hidden sm:inline-flex ml-1">Pago</span>
   </li>
 </ol>

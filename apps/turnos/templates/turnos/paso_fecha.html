@@ -9,12 +9,15 @@
 
     <h1 class="text-3xl font-extrabold text-gray-900 mb-2">Reservar turno</h1>
 
-    {% include "turnos/_pasos_indicador.html" with paso_actual=2 %}
+    {% include "turnos/_pasos_indicador.html" with paso_actual=3 modo=modo %}
 
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8 mt-6">
       <h2 class="text-xl font-bold text-gray-800 mb-1">¿Qué día?</h2>
       <p class="text-sm text-gray-500 mb-6">
-        Actividad seleccionada: <strong class="text-gray-800">{{ actividad }}</strong> · Lunes a sábado
+        Actividad: <strong class="text-gray-800">{{ actividad }}</strong> · Lunes a sábado
+        {% if es_varios %}
+          <br><span class="text-blue-700">Elegí una fecha del mes que te interesa: en el siguiente paso verás todos los mismos días de la semana de ese mes.</span>
+        {% endif %}
       </p>
 
       {% if messages %}

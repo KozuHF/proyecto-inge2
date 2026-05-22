@@ -1,0 +1,43 @@
+{% extends "_base.html" %}
+{% load i18n %}
+
+{% block title %}Reservar – Tipo de abono{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-lg mx-auto">
+
+    <h1 class="text-3xl font-extrabold text-gray-900 mb-2">Reservar turno</h1>
+    {% include "turnos/_pasos_indicador.html" with paso_actual=1 modo=modo %}
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8 mt-6">
+      <h2 class="text-xl font-bold text-gray-800 mb-2">¿Cómo querés reservar?</h2>
+      <p class="text-sm text-gray-500 mb-6">Elegí si necesitás un solo turno o varios en el mes.</p>
+
+      <form method="post" class="space-y-3">
+        {% csrf_token %}
+        {% for radio in form.modo %}
+          <label class="flex items-start gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-green-500 hover:bg-green-50 transition">
+            {{ radio.tag }}
+            <span>
+              <span class="block font-medium text-gray-800">{{ radio.choice_label }}</span>
+              {% if radio.data.value == 'unico' %}
+                <span class="block text-xs text-gray-500 mt-1">Una actividad, una fecha y un horario.</span>
+              {% else %}
+                <span class="block text-xs text-gray-500 mt-1">Mismo día y horario del mes; elegís qué fechas incluir.</span>
+              {% endif %}
+            </span>
+          </label>
+        {% endfor %}
+        {{ form.modo.errors }}
+
+        <button type="submit"
+          class="w-full mt-4 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
+          Siguiente →
+        </button>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endblock content %}

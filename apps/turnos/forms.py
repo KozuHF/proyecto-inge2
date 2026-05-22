@@ -3,12 +3,25 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.actividades.models import Actividad
-from .models import DIAS_HABILES, HORAS_VALIDAS
-from .services import usuario_puede_reservar_mensual
+from .models import DIAS_HABILES, HORAS_VALIDAS, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS
+
+
+class PasoTipoAbonoForm(forms.Form):
+    """Paso 1: Turno único o varios turnos del mes."""
+
+    modo = forms.ChoiceField(
+        label=_("Tipo de abono"),
+        choices=[
+            (MODO_TURNO_UNICO, _("Turno único")),
+            (MODO_VARIOS_TURNOS, _("Abonado mensual")),
+        ],
+        widget=forms.RadioSelect,
+        initial=MODO_TURNO_UNICO,
+    )
 
 
 class PasoActividadForm(forms.Form):
-    """Paso 1: El usuario elige la actividad."""
+    """Paso 2: El usuario elige la actividad."""
 
     actividad = forms.ModelChoiceField(
         queryset=Actividad.objects.all(),
@@ -61,34 +74,24 @@ class PasoHoraForm(forms.Form):
         self.fields["hora"].choices = choices
 
 
-class PasoTipoReservaForm(forms.Form):
-    """
-    Paso 4: Individual o mensual (solo si la fecha de hoy está en la ventana).
+class PasoSeleccionFechasForm(forms.Form):
+    """Paso 5 (varios turnos): elegir qué días del mes reservar."""
 
-    Si `mensual_disponible` es False, el campo se fuerza a INDIVIDUAL
-    y no se muestra la opción mensual.
-    """
-
-    TIPO_INDIVIDUAL = "individual"
-    TIPO_MENSUAL    = "mensual"
-
-    tipo = forms.ChoiceField(
-        label=_("Tipo de reserva"),
-        choices=[
-            (TIPO_INDIVIDUAL, _("Solo este turno")),
-            (TIPO_MENSUAL,    _("Todos los turnos del mes en este día y horario")),
-        ],
-        widget=forms.RadioSelect,
-        initial=TIPO_INDIVIDUAL,
+    fechas = forms.MultipleChoiceField(
+        label=_("Días a reservar"),
+        choices=[],
+        widget=forms.CheckboxSelectMultiple,
+        error_messages={"required": _("Seleccioná al menos un día.")},
     )
 
-    def __init__(self, *args, mensual_disponible=True, **kwargs):
+    def __init__(self, *args, fechas_candidatas=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if not mensual_disponible:
-            self.fields["tipo"].choices = [
-                (self.TIPO_INDIVIDUAL, _("Solo este turno")),
-            ]
-            self.fields["tipo"].initial = self.TIPO_INDIVIDUAL
-            self.fields["tipo"].help_text = _(
-                "La reserva mensual está disponible únicamente entre el 1 y el 10 de cada mes."
+        fechas_candidatas = fechas_candidatas or []
+        nombres = [_("Lunes"), _("Martes"), _("Miércoles"), _("Jueves"), _("Viernes"), _("Sábado")]
+        self.fields["fechas"].choices = [
+            (
+                f.isoformat(),
+                f"{nombres[f.weekday()]} {f.day:02d}/{f.month:02d}/{f.year}",
             )
+            for f in fechas_candidatas
+        ]

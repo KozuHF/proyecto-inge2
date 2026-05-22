@@ -24,6 +24,8 @@ class Pago(models.Model):
         "turnos.Reserva",
         on_delete=models.CASCADE,
         related_name="pagos",
+        null=True,
+        blank=True,
         verbose_name=_("Reserva"),
     )
     usuario = models.ForeignKey(

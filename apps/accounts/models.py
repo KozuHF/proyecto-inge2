@@ -113,6 +113,12 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         verbose_name=_("Rol"),
     )
 
+    suspendido = models.BooleanField(
+        default=False,
+        verbose_name=_("Suspendido"),
+        help_text=_("Suspensión por incumplimiento de plazos de abono mensual u otras sanciones."),
+    )
+
     # Campos requeridos por Django auth
     is_active = models.BooleanField(default=True, verbose_name=_("Activo"))
     is_staff = models.BooleanField(default=False, verbose_name=_("Staff"))

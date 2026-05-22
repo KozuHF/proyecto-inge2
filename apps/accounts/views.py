@@ -166,6 +166,8 @@ def detalle_usuario(request, pk):
 @login_required
 def editar_usuario(request, pk):
     """Edición de datos de un usuario (sin contraseña)."""
+    from apps.turnos import services as turnos_services
+
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
 
     # Solo staff o el propio usuario pueden editar
@@ -174,6 +176,9 @@ def editar_usuario(request, pk):
         return redirect("accounts:detalle", pk=pk)
 
     es_propio_perfil = request.user.pk == usuario.pk
+    if es_propio_perfil:
+        turnos_services.verificar_plazos_abonos_mensuales(usuario)
+
     FormClass = UsuarioPerfilForm if es_propio_perfil else UsuarioModificacionForm
     form = FormClass(request.POST or None, instance=usuario)
     if request.method == "POST" and form.is_valid():
