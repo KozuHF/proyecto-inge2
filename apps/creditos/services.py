@@ -1,5 +1,6 @@
 """
 Créditos por deporte: otorgamiento al cancelar con anticipación y uso en pagos.
+Cada crédito vence 30 días después de ser otorgado.
 """
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
@@ -7,6 +8,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Min
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -14,8 +16,8 @@ from apps.actividades.models import Actividad
 from apps.turnos.abono_mensual import precio_turno_abono
 from apps.turnos.models import GrupoReservaMensual, Reserva
 
-from .constants import EMOJI_POR_DEPORTE, HORAS_ANTELACION_CREDITO
-from .models import SaldoCredito
+from .constants import DIAS_VALIDEZ_CREDITO, EMOJI_POR_DEPORTE, HORAS_ANTELACION_CREDITO
+from .models import Credito
 
 
 @dataclass
@@ -24,6 +26,7 @@ class ResumenCredito:
     cantidad: int
     emoji: str
     color_ring: str
+    vence_mas_proximo: datetime | None = None
 
 
 @dataclass
@@ -40,7 +43,6 @@ def emoji_actividad(actividad: Actividad) -> str:
 
 
 def valor_credito_por_turno(actividad: Actividad, regla_cobro: str | None = None) -> Decimal:
-    """Valor de un crédito al pagar (incluye 20 % si el abono es solo del 16 en adelante)."""
     if regla_cobro:
         return precio_turno_abono(actividad.precio_turno, regla_cobro)
     return actividad.precio_turno
@@ -61,56 +63,76 @@ def puede_otorgar_credito_cancelacion(reserva: Reserva) -> bool:
     return timezone.now() < limite
 
 
-def obtener_saldo(usuario, actividad: Actividad) -> int:
-    saldo, _ = SaldoCredito.objects.get_or_create(
+def _eliminar_vencidos_sin_usar(usuario=None, actividad: Actividad | None = None) -> int:
+    """Elimina créditos no usados que ya pasaron su fecha de vencimiento."""
+    qs = Credito.objects.filter(
+        consumido_en__isnull=True,
+        fecha_vencimiento__lte=timezone.now(),
+    )
+    if usuario is not None:
+        qs = qs.filter(usuario=usuario)
+    if actividad is not None:
+        qs = qs.filter(actividad=actividad)
+    deleted, _ = qs.delete()
+    return deleted
+
+
+def creditos_disponibles_qs(usuario, actividad: Actividad):
+    _eliminar_vencidos_sin_usar(usuario, actividad)
+    return Credito.objects.filter(
         usuario=usuario,
         actividad=actividad,
-        defaults={"cantidad": 0},
-    )
-    return saldo.cantidad
+        consumido_en__isnull=True,
+        fecha_vencimiento__gt=timezone.now(),
+    ).order_by("fecha_vencimiento", "fecha_otorgamiento")
+
+
+def obtener_saldo(usuario, actividad: Actividad) -> int:
+    return creditos_disponibles_qs(usuario, actividad).count()
 
 
 def resumen_creditos_usuario(usuario) -> list[ResumenCredito]:
     from .constants import COLOR_RING_POR_DEPORTE
 
+    _eliminar_vencidos_sin_usar(usuario)
     actividades = Actividad.objects.all()
-    saldos = {
-        s.actividad_id: s.cantidad
-        for s in SaldoCredito.objects.filter(
-            usuario=usuario, actividad__in=actividades
-        )
-    }
     resultado = []
+
     for actividad in actividades:
+        disponibles = creditos_disponibles_qs(usuario, actividad)
+        cantidad = disponibles.count()
+        vence_mas_proximo = None
+        if cantidad:
+            agg = disponibles.aggregate(min_vence=Min("fecha_vencimiento"))
+            vence_mas_proximo = agg["min_vence"]
+
         resultado.append(
             ResumenCredito(
                 actividad=actividad,
-                cantidad=saldos.get(actividad.pk, 0),
+                cantidad=cantidad,
                 emoji=emoji_actividad(actividad),
                 color_ring=COLOR_RING_POR_DEPORTE.get(
                     actividad.nombre, "bg-gray-100"
                 ),
+                vence_mas_proximo=vence_mas_proximo,
             )
         )
     return resultado
 
 
 @transaction.atomic
-def otorgar_credito_cancelacion(reserva: Reserva) -> None:
-    saldo, _ = SaldoCredito.objects.select_for_update().get_or_create(
+def otorgar_credito_cancelacion(reserva: Reserva) -> Credito:
+    ahora = timezone.now()
+    return Credito.objects.create(
         usuario=reserva.usuario,
         actividad=reserva.turno.actividad,
-        defaults={"cantidad": 0},
+        fecha_vencimiento=Credito.calcular_vencimiento(ahora),
+        reserva_origen=reserva,
     )
-    saldo.cantidad += 1
-    saldo.save(update_fields=["cantidad"])
 
 
 @transaction.atomic
 def otorgar_creditos_por_cancelacion_grupo(reservas: list[Reserva]) -> int:
-    """
-    Otorga un crédito por cada reserva de la lista (ya validadas antes de cancelar).
-    """
     for reserva in reservas:
         otorgar_credito_cancelacion(reserva)
     return len(reservas)
@@ -120,21 +142,21 @@ def otorgar_creditos_por_cancelacion_grupo(reservas: list[Reserva]) -> int:
 def consumir_creditos(usuario, actividad: Actividad, cantidad: int) -> None:
     if cantidad <= 0:
         return
-    try:
-        saldo = SaldoCredito.objects.select_for_update().get(
-            usuario=usuario, actividad=actividad
-        )
-    except SaldoCredito.DoesNotExist:
-        raise ValidationError(_("No tenés créditos para este deporte."))
 
-    if saldo.cantidad < cantidad:
+    disponibles = list(
+        creditos_disponibles_qs(usuario, actividad).select_for_update()[:cantidad]
+    )
+    if len(disponibles) < cantidad:
+        saldo = len(disponibles)
         raise ValidationError(
-            _("No tenés suficientes créditos de %(deporte)s.")
-            % {"deporte": actividad.get_nombre_display()}
+            _("No tenés suficientes créditos vigentes de %(deporte)s (disponibles: %(n)d).")
+            % {"deporte": actividad.get_nombre_display(), "n": saldo}
         )
 
-    saldo.cantidad -= cantidad
-    saldo.save(update_fields=["cantidad"])
+    ahora = timezone.now()
+    for credito in disponibles:
+        credito.consumido_en = ahora
+        credito.save(update_fields=["consumido_en"])
 
 
 def calcular_descuento_creditos(
@@ -156,9 +178,6 @@ def validar_creditos_pago(
     monto_cobro: Decimal,
     regla_cobro: str | None = None,
 ) -> tuple[Decimal, Decimal, int]:
-    """
-    Valida el uso de créditos y devuelve (monto_tarjeta, descuento, creditos_efectivos).
-    """
     if creditos_usados < 0:
         raise ValidationError(_("La cantidad de créditos no puede ser negativa."))
 
@@ -168,7 +187,7 @@ def validar_creditos_pago(
     saldo = obtener_saldo(usuario, actividad)
     if creditos_usados > saldo:
         raise ValidationError(
-            _("Solo tenés %(n)d crédito(s) de %(deporte)s.")
+            _("Solo tenés %(n)d crédito(s) vigente(s) de %(deporte)s.")
             % {"n": saldo, "deporte": actividad.get_nombre_display()}
         )
 

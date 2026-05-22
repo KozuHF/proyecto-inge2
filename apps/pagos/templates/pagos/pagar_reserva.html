@@ -151,7 +151,7 @@
         <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
           <h3 class="text-sm font-semibold text-indigo-900 mb-2">
             Créditos de {{ creditos_ctx.actividad }}
-            <span class="text-indigo-600">({{ creditos_ctx.saldo }} disponible{{ creditos_ctx.saldo|pluralize }})</span>
+            <span class="text-indigo-600">({{ creditos_ctx.saldo }} vigente{{ creditos_ctx.saldo|pluralize }}, 30 días de validez)</span>
           </h3>
           <p class="text-xs text-indigo-800 mb-3">
             Cada crédito descuenta <strong>${{ creditos_ctx.valor_credito }}</strong> de una clase
