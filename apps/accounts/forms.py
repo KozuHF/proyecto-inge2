@@ -141,6 +141,11 @@ class UsuarioCreacionForm(forms.ModelForm):
                 attrs={"type": "date", "class": INPUT_CLASS}
             ),
         }
+        error_messages = {
+            "nro_documento": {
+                "unique": _("Este número de documento ya se encuentra registrado."),
+            }
+        }
 
     def clean_fecha_nacimiento(self):
         fecha = self.cleaned_data.get("fecha_nacimiento")
@@ -456,7 +461,15 @@ class EmpleadoCreacionForm(forms.ModelForm):
     def clean_fecha_nacimiento(self):
         fecha = self.cleaned_data.get("fecha_nacimiento")
         if fecha:
-            validar_mayor_de_edad(fecha)
+            hoy = timezone.now().date()
+            edad = (
+                hoy.year - fecha.year
+                - ((hoy.month, hoy.day) < (fecha.month, fecha.day))
+            )
+            if edad < 18:
+                raise ValidationError(
+                    _("No se pueden registrar empleados menores de edad en el sistema.")
+                )
         return fecha
 
     def clean_password1(self):

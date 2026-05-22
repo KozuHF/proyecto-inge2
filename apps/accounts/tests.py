@@ -83,3 +83,57 @@ class PanelPermissionsTest(TestCase):
         for url_name in ['panel_control', 'accounts:lista', 'accounts:crear_empleado', 'panel_turnos']:
             response = self.client.get(reverse(url_name))
             self.assertEqual(response.status_code, 200)
+
+class EmployeeCreationFormTest(TestCase):
+    def test_employee_minor_validation_message(self):
+        from apps.accounts.forms import EmpleadoCreacionForm
+        from datetime import date
+        from django.utils import timezone
+
+        # Create data with an under 18 date of birth
+        hoy = timezone.now().date()
+        minor_dob = date(hoy.year - 17, hoy.month, hoy.day)
+
+        form = EmpleadoCreacionForm(data={
+            "nombre": "Pedro",
+            "apellido": "Gómez",
+            "nro_documento": "44444444",
+            "email": "pedro@test.com",
+            "fecha_nacimiento": minor_dob.strftime("%Y-%m-%d"),
+            "password1": "Password123!",
+            "password2": "Password123!"
+        })
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("fecha_nacimiento", form.errors)
+        self.assertEqual(
+            form.errors["fecha_nacimiento"][0],
+            "No se pueden registrar empleados menores de edad en el sistema."
+        )
+
+    def test_customer_minor_validation_message(self):
+        from apps.accounts.forms import UsuarioCreacionForm
+        from datetime import date
+        from django.utils import timezone
+
+        hoy = timezone.now().date()
+        minor_dob = date(hoy.year - 17, hoy.month, hoy.day)
+
+        form = UsuarioCreacionForm(data={
+            "nombre": "Pedro",
+            "apellido": "Gómez",
+            "nro_documento": "44444444",
+            "email": "pedro@test.com",
+            "fecha_nacimiento": minor_dob.strftime("%Y-%m-%d"),
+            "password1": "Password123!",
+            "password2": "Password123!",
+            "acepta_sin_impedimentos": True
+        })
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("fecha_nacimiento", form.errors)
+        self.assertEqual(
+            form.errors["fecha_nacimiento"][0],
+            "El usuario debe tener al menos 18 años para registrarse. Acercarse a la sede con un adulto responsable para el registro."
+        )
+

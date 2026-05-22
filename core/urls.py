@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
-from .views import home
+from .views import home, contacto
 from apps.accounts import views as accounts_views
 from apps.turnos import views as turnos_views
 
@@ -13,6 +13,7 @@ urlpatterns = [
     path('panel/turnos/<int:pk>/eliminar/', turnos_views.eliminar_turno, name='eliminar_turno'),
     path('panel/turnos/eliminar/<int:actividad_id>/<str:fecha_str>/<int:hora>/', turnos_views.eliminar_turno_slot, name='eliminar_turno_slot'),
     path('', home, name='home'),
+    path('contacto/', contacto, name='contacto'),
     path("cuenta/", include("apps.accounts.urls")),
     path("turnos/", include("apps.turnos.urls")),
     path("pagos/", include("apps.pagos.urls")),

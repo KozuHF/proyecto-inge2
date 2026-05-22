@@ -28,8 +28,8 @@
         <form method="post" novalidate class="space-y-4">
             {% csrf_token %}
             
-            {% include "accounts/_form_field.html" with field=form.actividad %}
             {% include "accounts/_form_field.html" with field=form.fecha %}
+            {% include "accounts/_form_field.html" with field=form.actividad %}
             {% include "accounts/_form_field.html" with field=form.hora %}
             {% include "accounts/_form_field.html" with field=form.cupos %}
             {% include "accounts/_form_field.html" with field=form.precio_override %}

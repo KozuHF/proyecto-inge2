@@ -87,7 +87,7 @@ class Turno(models.Model):
     precio_override = models.DecimalField(
         max_digits=10, decimal_places=2,
         null=True, blank=True,
-        verbose_name=_("Precio especial (override)"),
+        verbose_name=_("Precio"),
         help_text=_("Si se completa, reemplaza el precio de la actividad."),
     )
 
