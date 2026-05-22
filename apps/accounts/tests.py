@@ -1,3 +1,85 @@
+from datetime import date
 from django.test import TestCase
+from django.urls import reverse
+from apps.accounts.models import Usuario, Roles
 
-# Create your tests here.
+class PanelPermissionsTest(TestCase):
+    def setUp(self):
+        # Create users
+        self.admin = Usuario.objects.create_user(
+            email="admin@test.com",
+            nombre="Admin",
+            apellido="Test",
+            nro_documento="11111111",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.ADMIN,
+            is_staff=True
+        )
+        self.employee = Usuario.objects.create_user(
+            email="employee@test.com",
+            nombre="Employee",
+            apellido="Test",
+            nro_documento="22222222",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.EMPLOYEE,
+            is_staff=True
+        )
+        self.client_user = Usuario.objects.create_user(
+            email="user@test.com",
+            nombre="Client",
+            apellido="Test",
+            nro_documento="33333333",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.USER,
+            is_staff=False
+        )
+
+    def test_anonymous_redirects(self):
+        # Anonymous should be redirected to login
+        for url_name in ['panel_control', 'accounts:lista', 'accounts:crear_empleado', 'panel_turnos']:
+            response = self.client.get(reverse(url_name))
+            self.assertEqual(response.status_code, 302)
+            self.assertIn('/login/', response.url)
+
+    def test_client_user_access(self):
+        self.client.force_login(self.client_user)
+        
+        # Access to panel_control should be forbidden (403)
+        response = self.client.get(reverse('panel_control'))
+        self.assertEqual(response.status_code, 403)
+
+        # Access to list and create employee should be forbidden (403)
+        for url_name in ['accounts:lista', 'accounts:crear_empleado']:
+            response = self.client.get(reverse(url_name))
+            self.assertEqual(response.status_code, 403)
+
+        # Access to panel_turnos should be forbidden (403)
+        response = self.client.get(reverse('panel_turnos'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_employee_access(self):
+        self.client.force_login(self.employee)
+
+        # Access to panel_control should be allowed (200)
+        response = self.client.get(reverse('panel_control'))
+        self.assertEqual(response.status_code, 200)
+
+        # Access to list and create employee should be forbidden (403)
+        for url_name in ['accounts:lista', 'accounts:crear_empleado']:
+            response = self.client.get(reverse(url_name))
+            self.assertEqual(response.status_code, 403)
+
+        # Access to panel_turnos should be forbidden (403)
+        response = self.client.get(reverse('panel_turnos'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_access(self):
+        self.client.force_login(self.admin)
+
+        # All access should be allowed (200)
+        for url_name in ['panel_control', 'accounts:lista', 'accounts:crear_empleado', 'panel_turnos']:
+            response = self.client.get(reverse(url_name))
+            self.assertEqual(response.status_code, 200)
