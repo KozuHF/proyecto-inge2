@@ -304,19 +304,6 @@ def _validar_tarjeta(numero_tarjeta: str, ultimos: str, monto: Decimal, tipo_pag
             _("Número de tarjeta inválido. Debe tener 16 dígitos."),
         )
 
-    tarjeta = TARJETAS_DEMO.get(pan)
-    if tarjeta is None:
-        return _rechazar(
-            _("Tarjeta no habilitada en modo demostración."),
-            _("Tarjeta no válida para esta demostración."),
-        )
-
-    if not tarjeta["tiene_fondos"]:
-        return _rechazar(
-            _("Fondos insuficientes."),
-            _("Pago rechazado: fondos insuficientes."),
-        )
-
     return ResultadoPago(exito=True)
 
 

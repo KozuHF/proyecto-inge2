@@ -88,7 +88,7 @@
                         {% endif %}
                         {% endif %}
                         <li>
-                            <a href="" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Contacto</a>
+                            <a href="{% url 'contacto' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Contacto</a>
                         </li>
                     </ul>
                 </div>
@@ -135,7 +135,7 @@
                         <li><a href="{% url 'accounts:login' %}" class="hover:text-green-400 transition">Iniciar sesión</a></li>
                         <li><a href="{% url 'accounts:registro' %}" class="hover:text-green-400 transition">Registrarse</a></li>
                         <li><a href="{% if user.is_authenticated %}{% url 'turnos:mis_reservas' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="hover:text-green-400 transition">Mis turnos</a></li>
-                        <li><a href="" class="hover:text-green-400 transition">Contacto</a></li>
+                        <li><a href="{% url 'contacto' %}" class="hover:text-green-400 transition">Contacto</a></li>
                     </ul>
                 </div>
 

@@ -159,7 +159,7 @@ class TurnosPanelTestCase(TestCase):
         
         post_data = {
             'actividad': self.actividad.pk,
-            'fecha': '2026-05-26', # Tuesday (valid)
+            'fecha': '2026-05-26', # Attempts to change, but is disabled
             'hora': 12,            # valid
             'cupos': 5             # valid
         }
@@ -167,7 +167,9 @@ class TurnosPanelTestCase(TestCase):
         self.assertRedirects(response, reverse('panel_turnos'))
         
         self.turno.refresh_from_db()
-        self.assertEqual(self.turno.fecha, date(2026, 5, 26))
+        # Fecha and Actividad should remain unchanged because they are disabled fields in the form
+        self.assertEqual(self.turno.fecha, date(2026, 5, 18))
+        self.assertEqual(self.turno.actividad, self.actividad)
         self.assertEqual(self.turno.hora, 12)
         self.assertEqual(self.turno.cupos, 5)
 
@@ -395,3 +397,15 @@ class TurnosPanelTestCase(TestCase):
             self.assertIn(date(2026, 5, 11), candidatas)
             self.assertIn(date(2026, 5, 18), candidatas)
             self.assertNotIn(date(2026, 5, 25), candidatas)
+
+    def test_contacto_view(self):
+        """Verify contact page loading and email addresses display."""
+        url = reverse('contacto')
+        
+        # Test GET request
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ponte en contacto")
+        self.assertContains(response, "contacto@club360.com")
+        self.assertContains(response, "sugerencias@club360.com")
+        self.assertContains(response, "reclamos@club360.com")

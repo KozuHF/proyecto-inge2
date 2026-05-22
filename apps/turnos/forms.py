@@ -120,10 +120,10 @@ class TurnoForm(forms.ModelForm):
 
     class Meta:
         model = Turno
-        fields = ["actividad", "fecha", "hora", "cupos", "precio_override"]
+        fields = ["fecha", "actividad", "hora", "cupos", "precio_override"]
         widgets = {
             "actividad": forms.Select(attrs={"class": PANEL_INPUT_CLASS}),
-            "fecha": forms.DateInput(attrs={"type": "date", "class": PANEL_INPUT_CLASS}),
+            "fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": PANEL_INPUT_CLASS}),
             "hora": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 8, "max": 21}),
             "cupos": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 1}),
             "precio_override": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 0, "step": "0.01"}),
@@ -131,8 +131,13 @@ class TurnoForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["fecha"].disabled = True
+        self.fields["fecha"].required = False
+        self.fields["actividad"].disabled = True
+        self.fields["actividad"].required = False
+        self.fields["precio_override"].label = _("Precio")
         if self.instance and self.instance.actividad_id:
             precio_base = self.instance.actividad.precio_turno
             self.fields["precio_override"].help_text = _(
-                "Dejar vacío para usar el precio por defecto de la actividad ($%(precio)s)."
+                "Dejar vacío para mantener el precio actual ($%(precio)s)."
             ) % {"precio": precio_base}
