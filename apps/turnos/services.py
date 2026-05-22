@@ -215,7 +215,9 @@ def reservar_varios_turnos(
 # ── Cancelación ───────────────────────────────────────────────────────────────
 
 @transaction.atomic
-def cancelar_reserva(usuario, reserva_id: int) -> Reserva:
+def cancelar_reserva(usuario, reserva_id: int) -> tuple[Reserva, bool]:
+    from apps.creditos import services as creditos_services
+
     try:
         reserva = Reserva.objects.select_related("turno", "turno__actividad").get(
             pk=reserva_id, usuario=usuario
@@ -223,19 +225,44 @@ def cancelar_reserva(usuario, reserva_id: int) -> Reserva:
     except Reserva.DoesNotExist:
         raise ValidationError(_("Reserva no encontrada."))
 
+    otorgar_credito = creditos_services.puede_otorgar_credito_cancelacion(reserva)
     reserva.cancelar()
-    return reserva
+
+    if otorgar_credito:
+        creditos_services.otorgar_credito_cancelacion(reserva)
+
+    return reserva, otorgar_credito
 
 
 @transaction.atomic
-def cancelar_grupo_mensual(usuario, grupo_id: int) -> GrupoReservaMensual:
+def cancelar_grupo_mensual(usuario, grupo_id: int) -> tuple[GrupoReservaMensual, int]:
+    from apps.creditos import services as creditos_services
+
     try:
-        grupo = GrupoReservaMensual.objects.get(pk=grupo_id, usuario=usuario)
+        grupo = (
+            GrupoReservaMensual.objects
+            .prefetch_related("reservas__turno__actividad")
+            .get(pk=grupo_id, usuario=usuario)
+        )
     except GrupoReservaMensual.DoesNotExist:
         raise ValidationError(_("Grupo de reserva no encontrado."))
 
+    reservas_activas = list(
+        grupo.reservas.filter(
+            estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA]
+        ).select_related("turno", "turno__actividad")
+    )
+    reservas_con_credito = [
+        r for r in reservas_activas
+        if creditos_services.puede_otorgar_credito_cancelacion(r)
+    ]
+
     grupo.cancelar_todo()
-    return grupo
+
+    creditos_otorgados = creditos_services.otorgar_creditos_por_cancelacion_grupo(
+        reservas_con_credito
+    )
+    return grupo, creditos_otorgados
 
 
 # ── Consultas de apoyo para las vistas ───────────────────────────────────────

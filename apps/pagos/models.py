@@ -60,6 +60,10 @@ class Pago(models.Model):
         max_length=4,
         verbose_name=_("Últimos 4 dígitos"),
     )
+    creditos_usados = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name=_("Créditos utilizados"),
+    )
     motivo_rechazo = models.CharField(
         max_length=200,
         blank=True,

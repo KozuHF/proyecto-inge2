@@ -309,12 +309,14 @@ def mis_reservas(request):
 @require_POST
 def cancelar_reserva(request, pk):
     try:
-        reserva = services.cancelar_reserva(request.user, pk)
+        reserva, credito_otorgado = services.cancelar_reserva(request.user, pk)
         logger.info("Reserva cancelada: %s por usuario %s", pk, request.user.pk)
-        messages.success(
-            request,
-            _("Reserva del %(turno)s cancelada.") % {"turno": reserva.turno},
-        )
+        msg = _("Reserva del %(turno)s cancelada.") % {"turno": reserva.turno}
+        if credito_otorgado:
+            msg += " " + _(
+                "Se acreditó 1 crédito de %(deporte)s por cancelar con más de 48 h de anticipación."
+            ) % {"deporte": reserva.turno.actividad.get_nombre_display()}
+        messages.success(request, msg)
     except ValidationError as exc:
         messages.error(request, exc.message)
     return redirect("turnos:mis_reservas")
@@ -324,9 +326,18 @@ def cancelar_reserva(request, pk):
 @require_POST
 def cancelar_grupo_mensual(request, pk):
     try:
-        grupo = services.cancelar_grupo_mensual(request.user, pk)
+        grupo, creditos_otorgados = services.cancelar_grupo_mensual(request.user, pk)
         logger.info("Grupo cancelado: %s por usuario %s", pk, request.user.pk)
-        messages.success(request, _("Todas las reservas del grupo fueron canceladas."))
+        msg = _("Todas las reservas del abono mensual fueron canceladas.")
+        if creditos_otorgados:
+            msg += " " + _(
+                "Se acreditaron %(n)d crédito(s) de %(deporte)s por los turnos pagados "
+                "cancelados con más de 48 h de anticipación."
+            ) % {
+                "n": creditos_otorgados,
+                "deporte": grupo.actividad.get_nombre_display(),
+            }
+        messages.success(request, msg)
     except ValidationError as exc:
         messages.error(request, exc.message)
     return redirect("turnos:mis_reservas")
