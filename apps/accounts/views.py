@@ -189,10 +189,17 @@ def editar_usuario(request, pk):
             return redirect("accounts:editar", pk=pk)
         return redirect("accounts:detalle", pk=pk)
 
+    creditos_resumen = None
+    if es_propio_perfil:
+        from apps.creditos.services import resumen_creditos_usuario
+
+        creditos_resumen = resumen_creditos_usuario(usuario)
+
     return render(request, "accounts/editar.html", {
         "form": form,
         "usuario": usuario,
         "es_propio_perfil": es_propio_perfil,
+        "creditos_resumen": creditos_resumen,
     })
 
 

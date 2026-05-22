@@ -14,6 +14,8 @@ from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 
 from apps.actividades.models import Actividad
+from apps.creditos import services as creditos_services
+from apps.creditos.services import ContextoPagoCreditos
 from apps.turnos import services as turnos_services
 from apps.turnos.abono_mensual import (
     clasificar_regla_abono,
@@ -248,8 +250,40 @@ def obtener_reserva_pagable(usuario, reserva_id: int) -> Reserva:
     return reserva
 
 
+def _validar_no_sena_con_creditos(tipo_pago: str, creditos_usados: int) -> None:
+    if creditos_usados > 0 and tipo_pago == TIPO_SENA:
+        raise ValidationError(
+            _("No podés pagar seña si usás créditos. Elegí pago total o no uses créditos.")
+        )
+
+
+def _preparar_cobro_con_creditos(
+    usuario,
+    ctx: ContextoPagoCreditos | None,
+    creditos_usados: int,
+    monto_cobro: Decimal,
+    *,
+    tipo_pago: str | None = None,
+) -> tuple[Decimal, Decimal, int]:
+    if creditos_usados > 0 and tipo_pago:
+        _validar_no_sena_con_creditos(tipo_pago, creditos_usados)
+    if not ctx or creditos_usados <= 0:
+        return monto_cobro, Decimal("0"), 0
+    return creditos_services.validar_creditos_pago(
+        usuario,
+        ctx.actividad,
+        creditos_usados,
+        ctx.max_creditos,
+        monto_cobro,
+        ctx.regla_cobro,
+    )
+
+
 def _validar_tarjeta(numero_tarjeta: str, ultimos: str, monto: Decimal, tipo_pago: str,
                      usuario, reserva=None) -> ResultadoPago:
+    if monto <= 0:
+        return ResultadoPago(exito=True)
+
     pan = normalizar_numero_tarjeta(numero_tarjeta)
 
     def _rechazar(motivo: str, mensaje: str) -> ResultadoPago:
@@ -309,7 +343,15 @@ def _aplicar_pago_a_reservas(reservas, tipo_pago: str, monto_cobrado: Decimal, r
             _aplicar_pago_aprobado(reserva, tipo_pago, reserva.monto_total, referencia)
 
 
-def _mensaje_exito(tipo_pago: str, monto: Decimal, referencia: str, en_espera: bool = False) -> str:
+def _mensaje_exito(
+    tipo_pago: str,
+    monto: Decimal,
+    referencia: str,
+    en_espera: bool = False,
+    *,
+    creditos_usados: int = 0,
+    descuento_creditos: Decimal | None = None,
+) -> str:
     base = ""
     if tipo_pago == TIPO_SENA:
         base = _("Seña abonada ($%(monto)s). Referencia: %(ref)s") % {"monto": monto, "ref": referencia}
@@ -318,9 +360,21 @@ def _mensaje_exito(tipo_pago: str, monto: Decimal, referencia: str, en_espera: b
     else:
         base = _("Pago total realizado. Referencia: %(ref)s") % {"ref": referencia}
 
+    if creditos_usados:
+        desc = descuento_creditos or Decimal("0")
+        base += " " + _(
+            "Se usaron %(n)d crédito(s) ($%(desc)s de descuento)."
+        ) % {"n": creditos_usados, "desc": desc}
+
     if en_espera:
         base += " " + _("Quedaste en lista de espera para el turno.")
     return base
+
+
+def _ultimos_4_o_creditos(numero_tarjeta: str, creditos_usados: int) -> str:
+    if creditos_usados and not numero_tarjeta:
+        return "CRDT"
+    return ultimos_4_digitos(numero_tarjeta)
 
 
 @transaction.atomic
@@ -329,6 +383,7 @@ def procesar_pago_y_reservar(
     wizard: dict,
     numero_tarjeta: str,
     tipo_pago: str,
+    creditos_usados: int = 0,
 ) -> ResultadoPago:
     """
     Valida el pago y, solo si es aprobado, crea la reserva (o el grupo mensual).
@@ -337,14 +392,22 @@ def procesar_pago_y_reservar(
     datos = datos_desde_wizard(wizard)
     if not turnos_services.usuario_puede_reservar(usuario):
         raise ValidationError(_("Tu cuenta está suspendida. No podés realizar reservas."))
-    monto = calcular_monto_cobro_nueva(datos, tipo_pago)
-    ultimos = ultimos_4_digitos(numero_tarjeta)
+    monto_cobro = calcular_monto_cobro_nueva(datos, tipo_pago)
+    ctx = creditos_services.contexto_desde_checkout(usuario, datos)
+    monto_tarjeta, descuento, creditos_efectivos = _preparar_cobro_con_creditos(
+        usuario, ctx, creditos_usados, monto_cobro, tipo_pago=tipo_pago
+    )
+    ultimos = _ultimos_4_o_creditos(numero_tarjeta, creditos_efectivos)
 
     resultado_tarjeta = _validar_tarjeta(
-        numero_tarjeta, ultimos, monto, tipo_pago, usuario, reserva=None
+        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=None
     )
     if not resultado_tarjeta.exito:
         return resultado_tarjeta
+
+    creditos_services.consumir_creditos(
+        usuario, datos.actividad, creditos_efectivos
+    )
 
     referencia = Pago.generar_referencia()
     en_espera = False
@@ -358,7 +421,7 @@ def procesar_pago_y_reservar(
             datos.fecha,
         )
         reservas = list(grupo.reservas.select_related("turno", "turno__actividad"))
-        _aplicar_pago_a_reservas(reservas, tipo_pago, monto, referencia)
+        _aplicar_pago_a_reservas(reservas, tipo_pago, monto_cobro, referencia)
         reserva_principal = reservas[0]
         reservas_creadas = len(reservas)
         en_espera = any(r.estado == Reserva.Estado.EN_ESPERA for r in reservas)
@@ -366,7 +429,14 @@ def procesar_pago_y_reservar(
             "Reservaste %(n)d turnos. %(detalle)s"
         ) % {
             "n": reservas_creadas,
-            "detalle": _mensaje_exito(tipo_pago, monto, referencia, en_espera),
+            "detalle": _mensaje_exito(
+                tipo_pago,
+                monto_tarjeta,
+                referencia,
+                en_espera,
+                creditos_usados=creditos_efectivos,
+                descuento_creditos=descuento,
+            ),
         }
     else:
         reserva = turnos_services.reservar_turno_individual(
@@ -377,18 +447,26 @@ def procesar_pago_y_reservar(
         reserva_principal = reserva
         reservas_creadas = 1
         en_espera = reserva.estado == Reserva.Estado.EN_ESPERA
-        mensaje = _mensaje_exito(tipo_pago, monto, referencia, en_espera)
+        mensaje = _mensaje_exito(
+            tipo_pago,
+            monto_tarjeta,
+            referencia,
+            en_espera,
+            creditos_usados=creditos_efectivos,
+            descuento_creditos=descuento,
+        )
         if not en_espera:
             mensaje = _("Reserva confirmada. ") + mensaje
 
     Pago.objects.create(
         reserva=reserva_principal,
         usuario=usuario,
-        monto=monto,
+        monto=monto_tarjeta,
         estado=Pago.Estado.APROBADO,
         tipo_cobro=tipo_pago,
         referencia=referencia,
         ultimos_4=ultimos,
+        creditos_usados=creditos_efectivos,
     )
 
     return ResultadoPago(
@@ -406,37 +484,53 @@ def procesar_pago_reserva(
     reserva_id: int,
     numero_tarjeta: str,
     tipo_pago: str,
+    creditos_usados: int = 0,
 ) -> ResultadoPago:
     """Pago de una reserva ya existente (ej. completar saldo desde Mis reservas)."""
     reserva = obtener_reserva_pagable(usuario, reserva_id)
-    monto = calcular_monto_cobro_reserva(reserva, tipo_pago)
-    ultimos = ultimos_4_digitos(numero_tarjeta)
+    monto_cobro = calcular_monto_cobro_reserva(reserva, tipo_pago)
+    ctx = creditos_services.contexto_desde_reserva(usuario, reserva)
+    monto_tarjeta, descuento, creditos_efectivos = _preparar_cobro_con_creditos(
+        usuario, ctx, creditos_usados, monto_cobro, tipo_pago=tipo_pago
+    )
+    ultimos = _ultimos_4_o_creditos(numero_tarjeta, creditos_efectivos)
 
     resultado_tarjeta = _validar_tarjeta(
-        numero_tarjeta, ultimos, monto, tipo_pago, usuario, reserva=reserva
+        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=reserva
     )
     if not resultado_tarjeta.exito:
         return resultado_tarjeta
+
+    creditos_services.consumir_creditos(
+        usuario, reserva.turno.actividad, creditos_efectivos
+    )
 
     referencia = Pago.generar_referencia()
     Pago.objects.create(
         reserva=reserva,
         usuario=usuario,
-        monto=monto,
+        monto=monto_tarjeta,
         estado=Pago.Estado.APROBADO,
         tipo_cobro=tipo_pago,
         referencia=referencia,
         ultimos_4=ultimos,
+        creditos_usados=creditos_efectivos,
     )
 
     if tipo_pago == TIPO_SENA:
-        _aplicar_pago_aprobado(reserva, tipo_pago, monto, referencia)
+        _aplicar_pago_aprobado(reserva, tipo_pago, monto_cobro, referencia)
     else:
         _aplicar_pago_aprobado(reserva, tipo_pago, reserva.monto_total, referencia)
 
     return ResultadoPago(
         exito=True,
-        mensaje=_mensaje_exito(tipo_pago, monto, referencia),
+        mensaje=_mensaje_exito(
+            tipo_pago,
+            monto_tarjeta,
+            referencia,
+            creditos_usados=creditos_efectivos,
+            descuento_creditos=descuento,
+        ),
         reserva=reserva,
     )
 
@@ -447,11 +541,16 @@ def procesar_pago_grupo(
     grupo_id: int,
     numero_tarjeta: str,
     tipo_pago: str,
+    creditos_usados: int = 0,
 ) -> ResultadoPago:
     """Paga o completa el saldo de todas las reservas activas del abono mensual."""
     grupo = obtener_grupo_pagable(usuario, grupo_id)
-    monto = calcular_monto_cobro_grupo(grupo, tipo_pago)
-    ultimos = ultimos_4_digitos(numero_tarjeta)
+    monto_cobro = calcular_monto_cobro_grupo(grupo, tipo_pago)
+    ctx = creditos_services.contexto_desde_grupo(usuario, grupo)
+    monto_tarjeta, descuento, creditos_efectivos = _preparar_cobro_con_creditos(
+        usuario, ctx, creditos_usados, monto_cobro, tipo_pago=tipo_pago
+    )
+    ultimos = _ultimos_4_o_creditos(numero_tarjeta, creditos_efectivos)
 
     reservas = list(
         grupo.reservas_activas().select_related("turno", "turno__actividad")
@@ -459,36 +558,47 @@ def procesar_pago_grupo(
     reserva_ref = reservas[0]
 
     resultado_tarjeta = _validar_tarjeta(
-        numero_tarjeta, ultimos, monto, tipo_pago, usuario, reserva=reserva_ref
+        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=reserva_ref
     )
     if not resultado_tarjeta.exito:
         return resultado_tarjeta
 
+    creditos_services.consumir_creditos(
+        usuario, grupo.actividad, creditos_efectivos
+    )
+
     referencia = Pago.generar_referencia()
-    _aplicar_pago_a_reservas(reservas, tipo_pago, monto, referencia)
+    _aplicar_pago_a_reservas(reservas, tipo_pago, monto_cobro, referencia)
 
     Pago.objects.create(
         reserva=reserva_ref,
         usuario=usuario,
-        monto=monto,
+        monto=monto_tarjeta,
         estado=Pago.Estado.APROBADO,
         tipo_cobro=tipo_pago,
         referencia=referencia,
         ultimos_4=ultimos,
+        creditos_usados=creditos_efectivos,
     )
+
+    extra_cred = ""
+    if creditos_efectivos:
+        extra_cred = " " + _(
+            "Se usaron %(n)d crédito(s) ($%(desc)s)."
+        ) % {"n": creditos_efectivos, "desc": descuento}
 
     if tipo_pago == TIPO_SENA:
         mensaje = _(
             "Seña del abono mensual abonada ($%(monto)s). %(n)d turnos. Referencia: %(ref)s"
-        ) % {"monto": monto, "n": len(reservas), "ref": referencia}
+        ) % {"monto": monto_tarjeta, "n": len(reservas), "ref": referencia} + extra_cred
     elif tipo_pago == TIPO_SALDO:
         mensaje = _(
             "Abono mensual pagado en su totalidad (%(n)d turnos). Referencia: %(ref)s"
-        ) % {"n": len(reservas), "ref": referencia}
+        ) % {"n": len(reservas), "ref": referencia} + extra_cred
     else:
         mensaje = _(
             "Abono mensual pagado (%(n)d turnos). Referencia: %(ref)s"
-        ) % {"n": len(reservas), "ref": referencia}
+        ) % {"n": len(reservas), "ref": referencia} + extra_cred
 
     return ResultadoPago(
         exito=True,
