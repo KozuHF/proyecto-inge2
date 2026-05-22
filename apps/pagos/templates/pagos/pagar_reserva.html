@@ -1,0 +1,219 @@
+{% extends "_base.html" %}
+{% load i18n %}
+
+{% block title %}{% if es_checkout %}Confirmar y pagar{% else %}Pagar reserva{% endif %}{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-lg mx-auto">
+
+    {% if es_checkout %}
+      <h1 class="text-3xl font-extrabold text-gray-900 mb-2">Reservar turno</h1>
+      {% include "turnos/_pasos_indicador.html" with paso_actual=6 modo=modo %}
+      <p class="text-sm text-gray-500 mb-6 mt-2">
+        Para confirmar tu reserva, completá el pago. Si cancelás o el pago falla, el turno no queda reservado.
+      </p>
+    {% else %}
+      <h1 class="text-3xl font-extrabold text-gray-900 mb-6">Pago con tarjeta</h1>
+    {% endif %}
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
+      <h2 class="text-lg font-bold text-gray-800 mb-3">Resumen</h2>
+      <div class="rounded-xl border border-gray-200 divide-y divide-gray-100 text-sm">
+        {% if es_checkout %}
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Actividad</span>
+            <span class="font-semibold text-gray-800">{{ checkout.actividad }}</span>
+          </div>
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Tipo</span>
+            <span class="font-semibold text-gray-800">
+              {% if es_varios %}Abonado mensual ({{ checkout.cantidad_turnos }} turnos){% else %}Turno único{% endif %}
+            </span>
+          </div>
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Horario</span>
+            <span class="font-semibold text-gray-800">{{ checkout.hora|stringformat:"02d" }}:00</span>
+          </div>
+          {% if es_varios and checkout.fechas_seleccionadas %}
+            <div class="px-4 py-3">
+              <span class="text-gray-500 block mb-1">Días elegidos</span>
+              <ul class="text-sm font-medium text-gray-800 space-y-0.5">
+                {% for f in checkout.fechas_seleccionadas %}
+                  <li>{{ f|date:"d/m/Y" }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% else %}
+            <div class="flex justify-between px-4 py-3">
+              <span class="text-gray-500">Fecha</span>
+              <span class="font-semibold text-gray-800">{{ checkout.fecha }}</span>
+            </div>
+          {% endif %}
+          {% if es_varios and checkout.regla_cobro == "segunda_quincena" %}
+            <div class="px-4 py-3 text-xs text-green-800 bg-green-50">
+              Abono del 16 en adelante: incluye 20&nbsp;% de descuento. Solo pago total.
+            </div>
+          {% elif es_varios %}
+            <div class="px-4 py-3 text-xs text-amber-800 bg-amber-50">
+              Incluye turnos del 1 al 15: el abono debe estar pagado antes del día 11 del mes.
+            </div>
+          {% endif %}
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Total</span>
+            <span class="font-bold text-green-700 text-base">${{ monto_total }}</span>
+          </div>
+        {% elif es_grupo %}
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Abono mensual</span>
+            <span class="font-semibold text-gray-800">{{ grupo }}</span>
+          </div>
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Turnos incluidos</span>
+            <span class="font-semibold text-gray-800">{{ grupo.cantidad_turnos_activos }}</span>
+          </div>
+          {% if grupo.tiene_descuento %}
+            <div class="px-4 py-3 text-xs text-green-800 bg-green-50">20&nbsp;% de descuento aplicado al abono.</div>
+          {% elif grupo.permite_pago_sena %}
+            <div class="px-4 py-3 text-xs text-amber-800 bg-amber-50">Pagá el total antes del día 11 del mes.</div>
+          {% endif %}
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Total del abono</span>
+            <span class="font-semibold text-gray-800">${{ monto_total }}</span>
+          </div>
+          {% if es_senado %}
+            <div class="flex justify-between px-4 py-3">
+              <span class="text-gray-500">Ya abonado</span>
+              <span class="font-semibold text-blue-700">${{ grupo.monto_abonado_grupo }}</span>
+            </div>
+            <div class="flex justify-between px-4 py-3">
+              <span class="text-gray-500">Saldo pendiente</span>
+              <span class="font-bold text-green-700 text-base">${{ monto_saldo }}</span>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Actividad</span>
+            <span class="font-semibold text-gray-800">{{ reserva.turno.actividad }}</span>
+          </div>
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Fecha y horario</span>
+            <span class="font-semibold text-gray-800">
+              {{ reserva.turno.fecha }} · {{ reserva.turno.hora|stringformat:"02d" }}:00
+            </span>
+          </div>
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-gray-500">Precio del turno</span>
+            <span class="font-semibold text-gray-800">${{ monto_total }}</span>
+          </div>
+          {% if es_senado %}
+            <div class="flex justify-between px-4 py-3">
+              <span class="text-gray-500">Ya abonado</span>
+              <span class="font-semibold text-blue-700">${{ reserva.precio_abonado }}</span>
+            </div>
+            <div class="flex justify-between px-4 py-3">
+              <span class="text-gray-500">Saldo pendiente</span>
+              <span class="font-bold text-green-700 text-base">${{ monto_saldo }}</span>
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    {% if messages %}
+      {% for msg in messages %}
+        <div class="mb-4 p-4 text-sm {% if msg.tags == 'success' %}text-green-800 bg-green-50 border-green-200{% elif msg.tags == 'error' %}text-red-800 bg-red-50 border-red-200{% else %}text-blue-800 bg-blue-50 border-blue-200{% endif %} border rounded-lg">
+          {{ msg }}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8">
+      <form method="post" class="space-y-4">
+        {% csrf_token %}
+
+        <div>
+          <h3 class="text-sm font-semibold text-gray-700 mb-3">Elegí cómo pagar</h3>
+          <div class="space-y-2">
+            {% for radio in form.tipo_pago %}
+              <label class="flex items-center gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-green-500 hover:bg-green-50 transition">
+                {{ radio.tag }}
+                <span class="font-medium text-gray-800">{{ radio.choice_label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          {% if form.tipo_pago.errors %}
+            <p class="mt-1 text-sm text-red-600">{{ form.tipo_pago.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <hr class="border-gray-200">
+
+        <div>
+          <label for="{{ form.numero_tarjeta.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
+            {{ form.numero_tarjeta.label }}
+          </label>
+          {{ form.numero_tarjeta }}
+          {% if form.numero_tarjeta.errors %}
+            <p class="mt-1 text-sm text-red-600">{{ form.numero_tarjeta.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div>
+          <label for="{{ form.titular.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
+            {{ form.titular.label }}
+          </label>
+          {{ form.titular }}
+          {% if form.titular.errors %}
+            <p class="mt-1 text-sm text-red-600">{{ form.titular.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label for="{{ form.vencimiento.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
+              {{ form.vencimiento.label }}
+            </label>
+            {{ form.vencimiento }}
+            {% if form.vencimiento.errors %}
+              <p class="mt-1 text-sm text-red-600">{{ form.vencimiento.errors.0 }}</p>
+            {% endif %}
+          </div>
+          <div>
+            <label for="{{ form.cvv.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
+              {{ form.cvv.label }}
+            </label>
+            {{ form.cvv }}
+            {% if form.cvv.errors %}
+              <p class="mt-1 text-sm text-red-600">{{ form.cvv.errors.0 }}</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          {% if es_checkout %}
+            <a href="{% if es_varios %}{% url 'turnos:paso_seleccion_fechas' %}{% else %}{% url 'turnos:paso_confirmar' %}{% endif %}"
+               class="flex-1 text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
+              ← Volver
+            </a>
+            <a href="{% url 'pagos:cancelar_checkout' %}"
+               class="flex-1 text-center border border-red-200 text-red-700 hover:bg-red-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
+              Cancelar
+            </a>
+          {% else %}
+            <a href="{% url 'turnos:mis_reservas' %}"
+               class="flex-1 text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
+              Cancelar
+            </a>
+          {% endif %}
+          <button type="submit"
+                  class="flex-1 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
+            Confirmar pago
+          </button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endblock content %}

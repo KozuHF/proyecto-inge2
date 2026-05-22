@@ -14,9 +14,9 @@ HORA_CIERRE    = 22  # 22:00 → último turno inicia a las 21:00
 DIAS_HABILES   = [0, 1, 2, 3, 4, 5]  # Lunes=0 … Sábado=5 (domingo=6 cerrado)
 HORAS_VALIDAS  = list(range(HORA_APERTURA, HORA_CIERRE))  # [8, 9, …, 21]
 
-# Ventana para reserva mensual: días 1 al 10 del mes en curso
-DIA_INICIO_VENTANA_MENSUAL = 1
-DIA_FIN_VENTANA_MENSUAL    = 10
+# Modos del wizard de reserva (sesión)
+MODO_TURNO_UNICO = "unico"
+MODO_VARIOS_TURNOS = "varios"
 
 
 def _validar_dia_habil(fecha: "datetime.date"):
@@ -149,8 +149,14 @@ class Reserva(models.Model):
         CANCELADA  = "cancelada",  _("Cancelada")
 
     class TipoReserva(models.TextChoices):
-        INDIVIDUAL = "individual", _("Turno individual")
-        MENSUAL    = "mensual",    _("Mensual (mismo día y hora, todo el mes)")
+        INDIVIDUAL = "individual", _("Turno único")
+        VARIOS     = "varios",     _("Abonado mensual")
+        MENSUAL    = "mensual",    _("Abonado mensual")  # reservas antiguas
+
+    class EstadoPago(models.TextChoices):
+        PENDIENTE = "pendiente", _("Pago pendiente")
+        SENADO    = "senado",    _("Señado")
+        PAGADO    = "pagado",    _("Pagado")
 
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -194,22 +200,24 @@ class Reserva(models.Model):
         verbose_name=_("Fecha de cancelación"),
     )
 
-    # ── Gancho para pagos futuros ─────────────────────────────────────────────
-    # precio_abonado = models.DecimalField(
-    #     max_digits=8, decimal_places=2,
-    #     null=True, blank=True,
-    #     verbose_name=_("Precio abonado"),
-    # )
-    # referencia_pago = models.CharField(
-    #     max_length=100,
-    #     blank=True,
-    #     verbose_name=_("Referencia de pago"),
-    # )
-    # medio_pago = models.CharField(
-    #     max_length=30,
-    #     blank=True,
-    #     verbose_name=_("Medio de pago"),
-    # )
+    estado_pago = models.CharField(
+        max_length=10,
+        choices=EstadoPago.choices,
+        default=EstadoPago.PENDIENTE,
+        verbose_name=_("Estado de pago"),
+    )
+    precio_abonado = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name=_("Precio abonado"),
+    )
+    referencia_pago = models.CharField(
+        max_length=40,
+        blank=True,
+        verbose_name=_("Referencia de pago"),
+    )
 
     class Meta:
         verbose_name        = _("Reserva")
@@ -226,6 +234,53 @@ class Reserva(models.Model):
 
     def __str__(self):
         return f"{self.usuario} – {self.turno} [{self.get_estado_display()}]"
+
+    @property
+    def esta_pagada(self) -> bool:
+        return self.estado_pago == self.EstadoPago.PAGADO
+
+    @property
+    def esta_senada(self) -> bool:
+        return self.estado_pago == self.EstadoPago.SENADO
+
+    @property
+    def es_abonado_mensual(self) -> bool:
+        return (
+            self.grupo_mensual_id is not None
+            and self.tipo_reserva in (self.TipoReserva.VARIOS, self.TipoReserva.MENSUAL)
+        )
+
+    @property
+    def tipo_abono_display(self) -> str:
+        if self.es_abonado_mensual:
+            return str(_("Abonado mensual"))
+        return str(_("Turno único"))
+
+    @property
+    def puede_pagar(self) -> bool:
+        if self.es_abonado_mensual:
+            return False
+        return self.estado_pago in (self.EstadoPago.PENDIENTE, self.EstadoPago.SENADO)
+
+    @property
+    def monto_total(self):
+        from .abono_mensual import precio_turno_abono
+
+        base = self.turno.actividad.precio_turno
+        if self.grupo_mensual_id:
+            return precio_turno_abono(base, self.grupo_mensual.regla_cobro)
+        return base
+
+    @property
+    def monto_sena(self):
+        from decimal import Decimal
+        return (self.monto_total * Decimal("0.5")).quantize(Decimal("0.01"))
+
+    @property
+    def monto_saldo(self):
+        from decimal import Decimal
+        abonado = self.precio_abonado or Decimal("0")
+        return (self.monto_total - abonado).quantize(Decimal("0.01"))
 
     # ── Lógica de negocio ─────────────────────────────────────────────────────
 
@@ -262,14 +317,9 @@ class Reserva(models.Model):
 
 class GrupoReservaMensual(models.Model):
     """
-    Agrupa las reservas generadas por una reserva mensual.
+    Agrupa las reservas de un mismo checkout «varios turnos».
 
-    Permite al usuario (y al sistema) cancelar todo el grupo de una vez,
-    o consultar cuántos turnos del mes se reservaron en bloque.
-
-    Condición de habilitación:
-    El día en que se hace la reserva mensual debe estar entre el 1 y el 10
-    del mes en curso (DIA_INICIO_VENTANA_MENSUAL – DIA_FIN_VENTANA_MENSUAL).
+    Permite cancelar todo el bloque de una vez desde Mis reservas.
     """
 
     usuario = models.ForeignKey(
@@ -290,12 +340,94 @@ class GrupoReservaMensual(models.Model):
     # Mes y año al que corresponde el bloque
     anio  = models.PositiveSmallIntegerField(verbose_name=_("Año"))
     mes   = models.PositiveSmallIntegerField(verbose_name=_("Mes"))
+    regla_cobro = models.CharField(
+        max_length=20,
+        default="primera_quincena",
+        verbose_name=_("Regla de cobro"),
+    )
+    descuento_porcentaje = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        verbose_name=_("Descuento (%)"),
+    )
     fecha_creacion = models.DateTimeField(auto_now_add=True, verbose_name=_("Fecha de creación"))
 
     class Meta:
-        verbose_name        = _("Grupo de reserva mensual")
-        verbose_name_plural = _("Grupos de reserva mensual")
+        verbose_name        = _("Abonado mensual")
+        verbose_name_plural = _("Abonados mensuales")
         ordering            = ["-fecha_creacion"]
+
+    def reservas_activas(self):
+        return self.reservas.filter(
+            estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA]
+        )
+
+    @property
+    def cantidad_turnos_activos(self) -> int:
+        return self.reservas_activas().count()
+
+    @property
+    def monto_total_grupo(self):
+        from decimal import Decimal
+        total = sum((r.monto_total for r in self.reservas_activas()), Decimal("0"))
+        return total.quantize(Decimal("0.01"))
+
+    @property
+    def monto_abonado_grupo(self):
+        from decimal import Decimal
+        total = sum(
+            ((r.precio_abonado or Decimal("0")) for r in self.reservas_activas()),
+            Decimal("0"),
+        )
+        return total.quantize(Decimal("0.01"))
+
+    @property
+    def monto_saldo_grupo(self):
+        from decimal import Decimal
+        return (self.monto_total_grupo - self.monto_abonado_grupo).quantize(Decimal("0.01"))
+
+    @property
+    def estado_pago_agregado(self):
+        estados = set(self.reservas_activas().values_list("estado_pago", flat=True))
+        if not estados:
+            return None
+        if len(estados) == 1:
+            return estados.pop()
+        if Reserva.EstadoPago.PENDIENTE in estados:
+            return Reserva.EstadoPago.PENDIENTE
+        if Reserva.EstadoPago.SENADO in estados:
+            return Reserva.EstadoPago.SENADO
+        return Reserva.EstadoPago.PAGADO
+
+    @property
+    def esta_pagado_grupo(self) -> bool:
+        return self.estado_pago_agregado == Reserva.EstadoPago.PAGADO
+
+    @property
+    def esta_senado_grupo(self) -> bool:
+        return self.estado_pago_agregado == Reserva.EstadoPago.SENADO
+
+    @property
+    def puede_pagar_grupo(self) -> bool:
+        from .abono_mensual import plazo_pago_vencido
+
+        if plazo_pago_vencido(self):
+            return False
+        return self.estado_pago_agregado in (
+            Reserva.EstadoPago.PENDIENTE,
+            Reserva.EstadoPago.SENADO,
+        )
+
+    @property
+    def tiene_descuento(self) -> bool:
+        return self.descuento_porcentaje > 0
+
+    @property
+    def permite_pago_sena(self) -> bool:
+        from .abono_mensual import permite_pago_sena
+
+        return permite_pago_sena(self.regla_cobro)
 
     def __str__(self):
         DIAS = [_("Lunes"), _("Martes"), _("Miércoles"), _("Jueves"), _("Viernes"), _("Sábado")]

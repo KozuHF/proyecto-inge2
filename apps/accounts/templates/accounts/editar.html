@@ -23,6 +23,13 @@
 
             {% include "accounts/_messages.html" %}
 
+            {% if es_propio_perfil and usuario.suspendido %}
+            <div class="mb-6 p-4 text-sm font-semibold text-red-900 bg-red-100 border-2 border-red-500 rounded-lg" role="alert">
+                Tu cuenta está suspendida por incumplimiento de las condiciones de pago de un abono mensual.
+                No podés realizar nuevas reservas hasta regularizar la situación con el club.
+            </div>
+            {% endif %}
+
             {% if form.non_field_errors %}
             <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg" role="alert">
                 {{ form.non_field_errors|join:", " }}

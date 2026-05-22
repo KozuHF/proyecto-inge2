@@ -36,12 +36,13 @@ class Actividad(models.Model):
         help_text=_("Cantidad máxima de reservas por turno para esta actividad."),
     )
 
-    # ── Gancho para precios futuros ───────────────────────────────────────────
-    # precio_turno = models.DecimalField(
-    #     max_digits=8, decimal_places=2,
-    #     null=True, blank=True,
-    #     verbose_name=_("Precio por turno"),
-    # )
+    precio_turno = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=5000,
+        validators=[MinValueValidator(0)],
+        verbose_name=_("Precio por turno"),
+    )
 
     class Meta:
         verbose_name = _("Actividad")
