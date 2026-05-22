@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'apps.actividades',
     'apps.turnos',
     'apps.pagos',
+    'apps.creditos',
 ]
 
 MIDDLEWARE = [
