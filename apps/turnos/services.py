@@ -80,7 +80,7 @@ def _crear_reserva_para_turno(usuario, turno: Turno, tipo: str, grupo=None) -> R
 def obtener_fechas_candidatas_varios(fecha_referencia: date, hora: int) -> list[date]:
     """
     Devuelve las fechas del mes de `fecha_referencia` con el mismo día de la semana,
-    en el horario dado, excluyendo fechas pasadas (anteriores a hoy).
+    en el horario dado, excluyendo fechas pasadas (anteriores a hoy) y días no hábiles (domingos/feriados).
     El usuario elige cuáles reservar en el paso siguiente.
     """
     _validar_dia_habil(fecha_referencia)
@@ -90,7 +90,16 @@ def obtener_fechas_candidatas_varios(fecha_referencia: date, hora: int) -> list[
     anio = fecha_referencia.year
     mes = fecha_referencia.month
     fechas = _fechas_del_dia_en_mes(fecha_referencia.weekday(), anio, mes)
-    fechas = [f for f in fechas if f >= hoy]
+    
+    valid_fechas = []
+    for f in fechas:
+        if f >= hoy:
+            try:
+                _validar_dia_habil(f)
+                valid_fechas.append(f)
+            except ValidationError:
+                pass
+    fechas = valid_fechas
 
     if not fechas:
         raise ValidationError(
@@ -112,6 +121,9 @@ def _validar_fechas_seleccionadas(
         raise ValidationError(_("Hay fechas seleccionadas que no son válidas."))
     if not fechas_seleccionadas:
         raise ValidationError(_("Seleccioná al menos un día."))
+    for f in fechas_seleccionadas:
+        _validar_dia_habil(f)
+        _validar_no_pasado(f)
     return sorted(fechas_seleccionadas)
 
 

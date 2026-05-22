@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.actividades.models import Actividad
-from .models import DIAS_HABILES, HORAS_VALIDAS, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS
+from .models import DIAS_HABILES, HORAS_VALIDAS, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, FERIADOS_INAMOVIBLES
 
 
 class PasoTipoAbonoForm(forms.Form):
@@ -46,6 +46,8 @@ class PasoFechaForm(forms.Form):
             raise forms.ValidationError(_("No podés reservar en una fecha pasada."))
         if fecha.weekday() not in DIAS_HABILES:
             raise forms.ValidationError(_("El establecimiento no abre los domingos."))
+        if (fecha.month, fecha.day) in FERIADOS_INAMOVIBLES:
+            raise forms.ValidationError(_("El establecimiento permanece cerrado por feriado nacional."))
         return fecha
 
 
@@ -95,3 +97,42 @@ class PasoSeleccionFechasForm(forms.Form):
             )
             for f in fechas_candidatas
         ]
+
+
+from .models import Turno
+from apps.accounts.forms import PANEL_INPUT_CLASS
+
+
+class TurnoForm(forms.ModelForm):
+    modificar_futuros = forms.BooleanField(
+        required=False,
+        label=_("Aplicar cambios a turnos futuros"),
+        help_text=_("Si se marca, se actualizarán o crearán todos los turnos futuros del mismo horario y día de la semana."),
+        widget=forms.CheckboxInput(
+            attrs={
+                "class": (
+                    "w-4 h-4 text-green-600 bg-gray-50 border-gray-300 rounded "
+                    "focus:ring-green-500 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                )
+            }
+        )
+    )
+
+    class Meta:
+        model = Turno
+        fields = ["actividad", "fecha", "hora", "cupos", "precio_override"]
+        widgets = {
+            "actividad": forms.Select(attrs={"class": PANEL_INPUT_CLASS}),
+            "fecha": forms.DateInput(attrs={"type": "date", "class": PANEL_INPUT_CLASS}),
+            "hora": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 8, "max": 21}),
+            "cupos": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 1}),
+            "precio_override": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 0, "step": "0.01"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.actividad_id:
+            precio_base = self.instance.actividad.precio_turno
+            self.fields["precio_override"].help_text = _(
+                "Dejar vacío para usar el precio por defecto de la actividad ($%(precio)s)."
+            ) % {"precio": precio_base}

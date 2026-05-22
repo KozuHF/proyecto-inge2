@@ -1,0 +1,45 @@
+{% extends "accounts/panel_base.html" %}
+{% load i18n %}
+
+{% block title %}Crear Cuenta Empleado — Club360{% endblock title %}
+
+{% block panel_content %}
+<div class="max-w-xl">
+    <div class="mb-6">
+        <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white">Crear cuenta de empleado</h1>
+        <p class="text-gray-500 dark:text-gray-400 text-sm">Registrá una cuenta de personal del club. Tendrá permisos para ver turnos del día y acceder a herramientas de atención.</p>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8 dark:bg-gray-800 dark:border-gray-700">
+        {% include "accounts/_messages.html" %}
+
+        {% if form.non_field_errors %}
+        <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg dark:bg-red-900/50 dark:text-red-300 dark:border-red-800" role="alert">
+            {{ form.non_field_errors|join:", " }}
+        </div>
+        {% endif %}
+
+        <form method="post" novalidate class="space-y-4">
+            {% csrf_token %}
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                {% include "accounts/_form_field.html" with field=form.nombre %}
+                {% include "accounts/_form_field.html" with field=form.apellido %}
+            </div>
+            
+            {% include "accounts/_form_field.html" with field=form.nro_documento %}
+            {% include "accounts/_form_field.html" with field=form.email %}
+            {% include "accounts/_form_field.html" with field=form.fecha_nacimiento %}
+            {% include "accounts/_form_field.html" with field=form.password1 %}
+            {% include "accounts/_form_field.html" with field=form.password2 %}
+
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">El empleado debe ser mayor de 18 años.</p>
+
+            <button type="submit"
+                class="w-full text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition dark:focus:ring-green-800">
+                Crear cuenta de empleado
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock panel_content %}

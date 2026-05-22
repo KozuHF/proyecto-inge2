@@ -81,21 +81,11 @@
                         <li>
                             <a href="{% url 'turnos:mis_reservas' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Mis reservas</a>
                         </li>
-                        {% endif %}
-                        {% if user.is_staff %}
-                        <li>
-                            <a href="{% url 'turnos:turnos_del_dia' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Turnos del día</a>
-                        </li>
-                        {% endif %}
                         {% if user.rol == 'admin' or user.rol == 'employee' %}
                         <li>
-                            <a href="{% url 'accounts:lista' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Usuarios</a>
+                            <a href="{% url 'panel_control' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Panel</a>
                         </li>
                         {% endif %}
-                        {% if user.is_staff %}
-                        <li>
-                            <a href="{% url 'admin:index' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Panel admin</a>
-                        </li>
                         {% endif %}
                         <li>
                             <a href="" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Contacto</a>

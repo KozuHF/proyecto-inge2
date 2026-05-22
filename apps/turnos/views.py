@@ -10,7 +10,7 @@ Wizard con sesión (`wizard_reserva`):
   Paso 6 → pago obligatorio (/pagos/reservar/)
 """
 import logging
-from datetime import date as date_type
+from datetime import date as date_type, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -18,6 +18,9 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
+from django.db import transaction
+from django.db.models import Count, Q
+from apps.accounts.decorators import rol_requerido
 
 from apps.actividades.models import Actividad
 from .forms import (
@@ -26,8 +29,9 @@ from .forms import (
     PasoHoraForm,
     PasoSeleccionFechasForm,
     PasoTipoAbonoForm,
+    TurnoForm,
 )
-from .models import GrupoReservaMensual, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, Reserva
+from .models import GrupoReservaMensual, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, Reserva, Turno
 from . import services
 
 logger = logging.getLogger(__name__)
@@ -328,29 +332,333 @@ def cancelar_grupo_mensual(request, pk):
     return redirect("turnos:mis_reservas")
 
 
+class VirtualTurno:
+    def __init__(self, actividad, fecha, hora):
+        self.pk = None
+        self.actividad = actividad
+        self.fecha = fecha
+        self.hora = hora
+        self.cupos = actividad.cupos
+        self.confirmadas_count = 0
+        self.precio_override = None
+
+    @property
+    def cupos_totales(self) -> int:
+        return self.cupos
+
+    @property
+    def cupos_ocupados(self) -> int:
+        return 0
+
+    @property
+    def cupos_libres(self) -> int:
+        return self.cupos
+
+    @property
+    def esta_lleno(self) -> bool:
+        return False
+
+    @property
+    def lista_espera(self):
+        return Reserva.objects.none()
+
+    @property
+    def reservas(self):
+        class EmptyReservas:
+            def all(self):
+                return Reserva.objects.none()
+            def count(self):
+                return 0
+        return EmptyReservas()
+
+    @property
+    def precio_efectivo(self):
+        return self.actividad.precio_turno
+
+
 @login_required
-def turnos_del_dia(request):
-    from .models import Turno
-
-    if not request.user.is_staff:
-        messages.error(request, _("No tenés permiso para acceder a esta sección."))
-        return redirect("turnos:mis_reservas")
-
+@rol_requerido("admin")
+def panel_turnos(request):
     fecha_str = request.GET.get("fecha")
     try:
         fecha = date_type.fromisoformat(fecha_str) if fecha_str else date_type.today()
     except ValueError:
         fecha = date_type.today()
 
-    turnos = (
+    actividad_id = request.GET.get("actividad")
+    estado_ocupacion = request.GET.get("estado_ocupacion", "todos")
+
+    # Get all activities to build the grid
+    actividades = Actividad.objects.all()
+    
+    # Filter the activities we actually loop over
+    actividades_filtradas = actividades
+    if actividad_id and actividad_id != "todas":
+        try:
+            actividades_filtradas = actividades_filtradas.filter(id=int(actividad_id))
+        except ValueError:
+            pass
+
+    # Query existing database turnos for the given date
+    turnos_db = (
         Turno.objects
         .filter(fecha=fecha)
         .select_related("actividad")
         .prefetch_related("reservas__usuario")
-        .order_by("hora", "actividad__nombre")
+        .annotate(
+            confirmadas_count=Count(
+                "reservas",
+                filter=Q(reservas__estado=Reserva.Estado.CONFIRMADA)
+            )
+        )
+    )
+    if actividad_id and actividad_id != "todas":
+        turnos_db = turnos_db.filter(actividad_id=actividad_id)
+
+    turnos_map = {
+        (t.actividad_id, t.hora): t
+        for t in turnos_db
+    }
+
+    from .models import HORAS_VALIDAS, DIAS_HABILES, FERIADOS_INAMOVIBLES
+
+    es_feriado = (fecha.month, fecha.day) in FERIADOS_INAMOVIBLES
+    es_dia_invalido = (fecha.weekday() not in DIAS_HABILES) or es_feriado
+
+    # Build the full list of slots (persisted + virtual)
+    slots = []
+    if not es_dia_invalido:
+        for hora in HORAS_VALIDAS:
+            for act in actividades_filtradas:
+                turno = turnos_map.get((act.id, hora))
+                if not turno:
+                    turno = VirtualTurno(act, fecha, hora)
+                slots.append(turno)
+
+    # Filter based on occupancy
+    filtered_slots = []
+    for s in slots:
+        if estado_ocupacion == "vacios":
+            if s.confirmadas_count == 0:
+                filtered_slots.append(s)
+        elif estado_ocupacion == "ocupados":
+            if s.confirmadas_count > 0:
+                filtered_slots.append(s)
+        elif estado_ocupacion == "llenos":
+            if s.confirmadas_count >= s.cupos_totales:
+                filtered_slots.append(s)
+        else:  # "todos"
+            filtered_slots.append(s)
+
+    return render(request, "turnos/panel_turnos.html", {
+        "turnos": filtered_slots,
+        "fecha": fecha,
+        "actividades": actividades,
+        "actividad_seleccionada": actividad_id,
+        "estado_seleccionado": estado_ocupacion,
+        "es_dia_invalido": es_dia_invalido,
+        "es_feriado": es_feriado,
+    })
+
+
+def _guardar_y_propagar_turno(form, turno):
+    with transaction.atomic():
+        turno = form.save(commit=False)
+        turno.full_clean()
+        modificar_futuros = form.cleaned_data.get("modificar_futuros", False)
+        if modificar_futuros:
+            turno.save()
+            from .models import DIAS_HABILES, FERIADOS_INAMOVIBLES
+            futures_dates = []
+            for w in range(1, 105):
+                future_date = turno.fecha + timedelta(weeks=w)
+                if future_date.weekday() in DIAS_HABILES and (future_date.month, future_date.day) not in FERIADOS_INAMOVIBLES:
+                    futures_dates.append(future_date)
+            
+            existing_turnos = Turno.objects.filter(
+                actividad=turno.actividad,
+                hora=turno.hora,
+                fecha__in=futures_dates
+            )
+            existing_dates = set()
+            for t in existing_turnos:
+                t.cupos = max(turno.cupos, t.reservas.filter(estado=Reserva.Estado.CONFIRMADA).count())
+                t.precio_override = turno.precio_override
+                t.save()
+                existing_dates.add(t.fecha)
+            
+            turnos_to_create = []
+            for d in futures_dates:
+                if d not in existing_dates:
+                    turnos_to_create.append(
+                        Turno(
+                            actividad=turno.actividad,
+                            fecha=d,
+                            hora=turno.hora,
+                            cupos=turno.cupos,
+                            precio_override=turno.precio_override
+                        )
+                    )
+            if turnos_to_create:
+                Turno.objects.bulk_create(turnos_to_create)
+        else:
+            turno.save()
+    return turno
+
+
+@login_required
+@rol_requerido("admin")
+def editar_turno(request, pk):
+    turno = get_object_or_404(Turno, pk=pk)
+    if request.method == "POST":
+        form = TurnoForm(request.POST, instance=turno)
+        if form.is_valid():
+            try:
+                _guardar_y_propagar_turno(form, turno)
+                messages.success(request, _("Turno modificado correctamente."))
+                return redirect("panel_turnos")
+            except ValidationError as e:
+                form.add_error(None, e)
+    else:
+        form = TurnoForm(instance=turno)
+
+    return render(request, "turnos/editar_turno.html", {
+        "form": form,
+        "turno": turno,
+    })
+
+
+@login_required
+@rol_requerido("admin")
+def editar_turno_slot(request, actividad_id, fecha_str, hora):
+    try:
+        fecha = date_type.fromisoformat(fecha_str)
+    except ValueError:
+        messages.error(request, _("Fecha no válida."))
+        return redirect("panel_turnos")
+
+    actividad = get_object_or_404(Actividad, id=actividad_id)
+    turno = Turno.objects.filter(actividad=actividad, fecha=fecha, hora=hora).first()
+    if turno:
+        return redirect("editar_turno", pk=turno.pk)
+
+    turno = Turno(actividad=actividad, fecha=fecha, hora=hora, cupos=actividad.cupos)
+
+    if request.method == "POST":
+        form = TurnoForm(request.POST, instance=turno)
+        if form.is_valid():
+            try:
+                _guardar_y_propagar_turno(form, turno)
+                messages.success(request, _("Turno creado y modificado correctamente."))
+                return redirect("panel_turnos")
+            except ValidationError as e:
+                form.add_error(None, e)
+    else:
+        form = TurnoForm(instance=turno)
+
+    return render(request, "turnos/editar_turno.html", {
+        "form": form,
+        "turno": turno,
+    })
+
+
+def _obtener_datos_eliminacion(actividad, fecha, hora, turno_db=None):
+    if not turno_db:
+        turno_db = Turno.objects.filter(actividad=actividad, fecha=fecha, hora=hora).first()
+    
+    turno = turno_db if turno_db else VirtualTurno(actividad, fecha, hora)
+    reservas_count = turno_db.reservas.count() if turno_db else 0
+    
+    weekday = fecha.weekday()
+    future_turnos_db = Turno.objects.filter(
+        actividad=actividad,
+        hora=hora,
+        fecha__gte=fecha
+    )
+    future_turnos = [t for t in future_turnos_db if t.fecha.weekday() == weekday]
+    reservas_futuras_count = sum(t.reservas.count() for t in future_turnos)
+    
+    return turno, reservas_count, reservas_futuras_count, future_turnos, turno_db
+
+
+@login_required
+@rol_requerido("admin")
+def eliminar_turno(request, pk):
+    turno_db = get_object_or_404(Turno, pk=pk)
+    turno, reservas_count, reservas_futuras_count, future_turnos, unused_turno_db = _obtener_datos_eliminacion(
+        turno_db.actividad, turno_db.fecha, turno_db.hora, turno_db=turno_db
     )
 
-    return render(request, "turnos/turnos_del_dia.html", {
-        "turnos": turnos,
-        "fecha": fecha,
+    if request.method == "POST":
+        tipo_eliminacion = request.POST.get("tipo_eliminacion", "este_dia")
+        if tipo_eliminacion == "todos_futuros":
+            deleted_count = len(future_turnos)
+            with transaction.atomic():
+                for t in future_turnos:
+                    t.delete()
+            messages.success(
+                request,
+                _("Se eliminaron %(count)d turnos programados (hoy y futuros) para este día y horario.")
+                % {"count": deleted_count}
+            )
+        else:
+            turno_db.delete()
+            messages.success(
+                request,
+                _("El turno del %(fecha)s a las %(hora)02d:00 fue eliminado exitosamente.")
+                % {"fecha": turno.fecha, "hora": turno.hora}
+            )
+        return redirect("panel_turnos")
+
+    return render(request, "turnos/eliminar_turno_confirm.html", {
+        "turno": turno,
+        "reservas_count": reservas_count,
+        "reservas_futuras_count": reservas_futuras_count,
+        "es_virtual": False,
+    })
+
+
+@login_required
+@rol_requerido("admin")
+def eliminar_turno_slot(request, actividad_id, fecha_str, hora):
+    try:
+        fecha = date_type.fromisoformat(fecha_str)
+    except ValueError:
+        messages.error(request, _("Fecha no válida."))
+        return redirect("panel_turnos")
+
+    actividad = get_object_or_404(Actividad, id=actividad_id)
+    turno, reservas_count, reservas_futuras_count, future_turnos, turno_db = _obtener_datos_eliminacion(
+        actividad, fecha, hora
+    )
+
+    if request.method == "POST":
+        tipo_eliminacion = request.POST.get("tipo_eliminacion", "este_dia")
+        if tipo_eliminacion == "todos_futuros":
+            deleted_count = len(future_turnos)
+            with transaction.atomic():
+                for t in future_turnos:
+                    t.delete()
+            messages.success(
+                request,
+                _("Se eliminaron %(count)d turnos programados (hoy y futuros) para este día y horario.")
+                % {"count": deleted_count}
+            )
+        else:
+            if turno_db:
+                turno_db.delete()
+                messages.success(
+                    request,
+                    _("El turno del %(fecha)s a las %(hora)02d:00 fue eliminado exitosamente.")
+                    % {"fecha": fecha, "hora": hora}
+                )
+            else:
+                messages.success(request, _("El turno ya estaba vacío, no fue necesario eliminar nada."))
+        return redirect("panel_turnos")
+
+    return render(request, "turnos/eliminar_turno_confirm.html", {
+        "turno": turno,
+        "reservas_count": reservas_count,
+        "reservas_futuras_count": reservas_futuras_count,
+        "es_virtual": (turno_db is None),
     })
