@@ -11,6 +11,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
 from .decorators import rol_requerido
+from .models import Roles
 from .forms import (
     CambiarPasswordForm,
     LoginForm,
@@ -22,6 +23,7 @@ from .forms import (
     UsuarioPerfilForm,
 )
 from .repository import UsuarioRepository
+from . import services
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +211,35 @@ def cambiar_password(request):
         return redirect("accounts:editar", pk=usuario.pk)
 
     return render(request, "accounts/cambiar_password.html", {"form": form})
+
+
+@login_required
+def eliminar_cuenta(request):
+    """
+    Permite al usuario autenticado eliminar permanentemente su cuenta.
+    GET muestra la página de confirmación; POST ejecuta el borrado.
+    Los administradores no pueden eliminar su propia cuenta.
+    """
+    usuario = request.user
+
+    # Las cuentas de administrador no pueden eliminarse desde esta sección.
+    if usuario.rol == Roles.ADMIN:
+        messages.error(
+            request,
+            _("Las cuentas de administrador no pueden eliminarse desde esta sección."),
+        )
+        return redirect("accounts:editar", pk=usuario.pk)
+
+    if request.method == "POST":
+        email = usuario.email
+        pk = usuario.pk
+        services.eliminar_cuenta(usuario)
+        logout(request)
+        logger.warning("Cuenta eliminada: %s (ID=%s)", email, pk)
+        messages.success(request, _("Tu cuenta fue eliminada."))
+        return redirect("home")
+
+    return render(request, "accounts/eliminar_cuenta.html")
 
 
 @rol_requerido("admin")
