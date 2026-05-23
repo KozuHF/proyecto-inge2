@@ -147,7 +147,29 @@
           {% endif %}
         </div>
 
+        {% if creditos_ctx and creditos_ctx.saldo > 0 %}
+        <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+          <h3 class="text-sm font-semibold text-indigo-900 mb-2">
+            Créditos de {{ creditos_ctx.actividad }}
+            <span class="text-indigo-600">({{ creditos_ctx.saldo }} vigente{{ creditos_ctx.saldo|pluralize }}, 30 días de validez)</span>
+          </h3>
+          <p class="text-xs text-indigo-800 mb-3">
+            Cada crédito descuenta <strong>${{ creditos_ctx.valor_credito }}</strong> de una clase
+            {% if es_varios or es_grupo %}(podés usar varios en este abono){% endif %}.
+            Si usás créditos, solo podés elegir <strong>pago total</strong> (no seña).
+          </p>
+          <label for="{{ form.creditos_usados.id_for_label }}" class="block text-sm font-medium text-gray-900 mb-1">
+            {{ form.creditos_usados.label }}
+          </label>
+          {{ form.creditos_usados }}
+          {% if form.creditos_usados.errors %}
+            <p class="mt-1 text-sm text-red-600">{{ form.creditos_usados.errors.0 }}</p>
+          {% endif %}
+        </div>
+        {% endif %}
+
         <hr class="border-gray-200">
+        <p class="text-xs text-gray-500">Completá la tarjeta solo si el pago no queda cubierto íntegramente con créditos.</p>
 
         <div>
           <label for="{{ form.numero_tarjeta.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
@@ -217,3 +239,57 @@
   </div>
 </div>
 {% endblock content %}
+
+{% block extra_scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const cardInput = document.getElementById('id_numero_tarjeta');
+    const expiryInput = document.getElementById('id_vencimiento');
+    const cvvInput = document.getElementById('id_cvv');
+    const nameInput = document.getElementById('id_titular');
+
+    if (cardInput) {
+      cardInput.setAttribute('maxlength', '16');
+      cardInput.addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '').slice(0, 16);
+      });
+    }
+
+    if (expiryInput) {
+      expiryInput.setAttribute('maxlength', '5');
+      expiryInput.addEventListener('input', function() {
+        let selectionStart = this.selectionStart;
+        let val = this.value.replace(/\D/g, '');
+        if (val.length > 4) val = val.slice(0, 4);
+
+        let formatted = '';
+        if (val.length > 2) {
+          formatted = val.slice(0, 2) + '/' + val.slice(2);
+        } else {
+          formatted = val;
+        }
+
+        if (this.value !== formatted) {
+          let diff = formatted.length - this.value.length;
+          this.value = formatted;
+          this.setSelectionRange(selectionStart + diff, selectionStart + diff);
+        }
+      });
+    }
+
+    if (cvvInput) {
+      cvvInput.setAttribute('maxlength', '4');
+      cvvInput.addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '').slice(0, 4);
+      });
+    }
+
+    if (nameInput) {
+      nameInput.addEventListener('input', function() {
+        this.value = this.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+      });
+    }
+  });
+</script>
+{% endblock extra_scripts %}
+

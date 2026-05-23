@@ -1,76 +1,161 @@
-{% extends "_base.html" %}
+{% extends "accounts/panel_base.html" %}
+{% load i18n %}
 
-{% block title %}Listado de usuarios - Club360{% endblock title %}
+{% block title %}Listado de usuarios — Club360{% endblock title %}
 
-{% block content %}
+{% block panel_content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
+        <div>
+            <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white mb-1">Usuarios</h1>
+            <p class="text-gray-500 dark:text-gray-400 text-sm">Gestioná las cuentas registradas en el club. Total: <span class="font-bold text-green-700 dark:text-green-400">{{ total }}</span> usuarios.</p>
+        </div>
+        <a href="{% url 'accounts:crear_empleado' %}" class="inline-flex items-center gap-2 text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-4 py-2.5 text-center transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Nuevo empleado
+        </a>
+    </div>
 
-<h1>Usuarios ({{ total }} en total)</h1>
- 
-<h2>Filtros</h2>
-<form method="get">
-    {{ form_filtro.as_p }}
-    <button type="submit">Filtrar</button>
-    <a href="{% url 'accounts:lista' %}">Limpiar filtros</a>
-</form>
- 
-<hr>
- 
-{% if page_obj %}
-    <table border="1">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Nombre</th>
-                <th>Apellido</th>
-                <th>Email</th>
-                <th>Documento</th>
-                <th>Activo</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for u in page_obj %}
-            <tr>
-                <td>{{ u.id }}</td>
-                <td>{{ u.nombre }}</td>
-                <td>{{ u.apellido }}</td>
-                <td>{{ u.email }}</td>
-                <td>{{ u.nro_documento }}</td>
-                <td>{{ u.is_active|yesno:"Sí,No" }}</td>
-                <td>
-                    <a href="{% url 'accounts:detalle' u.pk %}">Ver</a>
-                    <a href="{% url 'accounts:editar' u.pk %}">Editar</a>
- 
-                    {% if request.user.is_staff %}
-                        {% if u.is_active %}
-                            <form method="post" action="{% url 'accounts:desactivar' u.pk %}" style="display:inline;">
-                                {% csrf_token %}
-                                <button type="submit">Desactivar</button>
-                            </form>
+    {% include "accounts/_messages.html" %}
+
+    <!-- Filtros de Búsqueda -->
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8 dark:bg-gray-800 dark:border-gray-700">
+        <h2 class="text-lg font-bold text-gray-800 dark:text-white mb-4">Filtrar usuarios</h2>
+        <form method="get" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {% for field in form_filtro %}
+                    <div>
+                        <label for="{{ field.id_for_label }}" class="block mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            {{ field.label }}
+                        </label>
+                        <!-- Inyectamos estilos tailwind directamente en la plantilla si el campo es de tipo date o select -->
+                        {% if field.field.widget.input_type == 'date' %}
+                            <input type="date" name="{{ field.name }}" id="{{ field.id_for_label }}" value="{{ field.value|default_if_none:'' }}"
+                                   class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400 dark:focus:ring-green-500 dark:focus:border-green-500">
+                        {% elif field.name == 'is_active' %}
+                            <select name="{{ field.name }}" id="{{ field.id_for_label }}"
+                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-green-500 dark:focus:border-green-500">
+                                {% for val, label in field.field.widget.choices %}
+                                    <option value="{{ val }}" {% if field.value == val %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
                         {% else %}
-                            <form method="post" action="{% url 'accounts:activar' u.pk %}" style="display:inline;">
-                                {% csrf_token %}
-                                <button type="submit">Activar</button>
-                            </form>
+                            <input type="text" name="{{ field.name }}" id="{{ field.id_for_label }}" value="{{ field.value|default_if_none:'' }}"
+                                   class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400 dark:focus:ring-green-500 dark:focus:border-green-500"
+                                   placeholder="Buscar...">
                         {% endif %}
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
- 
-    <p>
-        Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
-        {% if page_obj.has_previous %}
-            | <a href="?page={{ page_obj.previous_page_number }}">Anterior</a>
-        {% endif %}
-        {% if page_obj.has_next %}
-            | <a href="?page={{ page_obj.next_page_number }}">Siguiente</a>
-        {% endif %}
-    </p>
-{% else %}
-    <p>No se encontraron usuarios.</p>
-{% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="flex items-center justify-end gap-3 pt-2">
+                <a href="{% url 'accounts:lista' %}" class="px-4 py-2 text-sm font-semibold text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600">
+                    Limpiar filtros
+                </a>
+                <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
+                    Filtrar resultados
+                </button>
+            </div>
+        </form>
+    </div>
 
-{% endblock %}
+    <!-- Listado de Usuarios (Tabla) -->
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+        <div class="overflow-x-auto">
+            {% if page_obj %}
+                <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                        <tr>
+                            <th scope="col" class="px-6 py-4">ID</th>
+                            <th scope="col" class="px-6 py-4">Nombre y Apellido</th>
+                            <th scope="col" class="px-6 py-4">Email / Documento</th>
+                            <th scope="col" class="px-6 py-4">Rol / Estado</th>
+                            <th scope="col" class="px-6 py-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for u in page_obj %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                            <td class="px-6 py-4 font-mono text-xs text-gray-400">#{{ u.id }}</td>
+                            <td class="px-6 py-4">
+                                <div class="font-bold text-gray-900 dark:text-white">{{ u.get_full_name }}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-gray-900 dark:text-white">{{ u.email }}</div>
+                                <div class="text-xs text-gray-400">DNI: {{ u.nro_documento }}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="mb-1">
+                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                                        {{ u.get_rol_display }}
+                                    </span>
+                                </div>
+                                <div>
+                                    {% if u.is_active %}
+                                        <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400">Activo</span>
+                                    {% else %}
+                                        <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400">Inactivo</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-right space-x-2">
+                                <a href="{% url 'accounts:detalle' u.pk %}" class="inline-flex items-center text-sm font-semibold text-blue-600 hover:underline">
+                                    Ver
+                                </a>
+                                <a href="{% url 'accounts:editar' u.pk %}" class="inline-flex items-center text-sm font-semibold text-green-600 hover:underline">
+                                    Editar
+                                </a>
+                                {% if u.is_active %}
+                                    <form method="post" action="{% url 'accounts:desactivar' u.pk %}" class="inline-block" onsubmit="return confirm('¿Estás seguro de desactivar a {{ u.get_full_name }}?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="text-sm font-semibold text-red-600 hover:underline">
+                                            Desactivar
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <form method="post" action="{% url 'accounts:activar' u.pk %}" class="inline-block">
+                                        {% csrf_token %}
+                                        <button type="submit" class="text-sm font-semibold text-green-600 hover:underline">
+                                            Activar
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="text-center py-12 text-gray-500">
+                    <p>No se encontraron usuarios con los filtros aplicados.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Paginación -->
+        {% if page_obj.has_other_pages %}
+            <div class="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 px-6 py-4 bg-gray-50 dark:bg-gray-800">
+                <span class="text-sm text-gray-700 dark:text-gray-400">
+                    Página <span class="font-semibold">{{ page_obj.number }}</span> de <span class="font-semibold">{{ page_obj.paginator.num_pages }}</span>
+                </span>
+                <div class="inline-flex space-x-2">
+                    {% if page_obj.has_previous %}
+                        <a href="?page={{ page_obj.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+                           class="px-3 py-1 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600">
+                            Anterior
+                        </a>
+                    {% endif %}
+                    {% if page_obj.has_next %}
+                        <a href="?page={{ page_obj.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+                           class="px-3 py-1 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600">
+                            Siguiente
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock panel_content %}

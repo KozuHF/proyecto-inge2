@@ -1,0 +1,195 @@
+{% extends "accounts/panel_base.html" %}
+{% load i18n %}
+
+{% block title %}Gestión de Turnos — Club360{% endblock title %}
+
+{% block panel_content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white">Gestión de Turnos</h1>
+        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
+            Revisá, filtrá, modificá y eliminá los turnos del establecimiento.
+        </p>
+    </div>
+
+    {% include "accounts/_messages.html" %}
+
+    <!-- Filtros -->
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8 dark:bg-gray-800 dark:border-gray-700">
+        <form method="get" class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+            <!-- Fecha -->
+            <div>
+                <label for="fecha" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Fecha</label>
+                <input type="date" id="fecha" name="fecha" value="{{ fecha|date:'Y-m-d' }}"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
+            </div>
+
+            <!-- Deporte / Actividad -->
+            <div>
+                <label for="actividad" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Deporte</label>
+                <select id="actividad" name="actividad"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="todas" {% if actividad_seleccionada == 'todas' or not actividad_seleccionada %}selected{% endif %}>Todos los deportes</option>
+                    {% for act in actividades %}
+                        <option value="{{ act.id }}" {% if actividad_seleccionada == act.id|stringformat:"s" %}selected{% endif %}>
+                            {{ act.get_nombre_display }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Estado de Ocupación -->
+            <div>
+                <label for="estado_ocupacion" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Ocupación</label>
+                <select id="estado_ocupacion" name="estado_ocupacion"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="todos" {% if estado_seleccionado == 'todos' %}selected{% endif %}>Todos</option>
+                    <option value="vacios" {% if estado_seleccionado == 'vacios' %}selected{% endif %}>Vacíos</option>
+                    <option value="ocupados" {% if estado_seleccionado == 'ocupados' %}selected{% endif %}>Con reservas</option>
+                    <option value="llenos" {% if estado_seleccionado == 'llenos' %}selected{% endif %}>Llenos</option>
+                </select>
+            </div>
+
+            <!-- Botón Filtrar -->
+            <div>
+                <button type="submit"
+                    class="w-full text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition dark:focus:ring-green-800">
+                    Filtrar turnos
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Lista de Turnos o Alerta de Día Cerrado -->
+    {% if es_dia_invalido %}
+    <div class="bg-amber-50 border border-amber-200 rounded-3xl p-10 text-center dark:bg-amber-950/20 dark:border-amber-900/30 transition shadow-sm hover:shadow-md max-w-xl mx-auto my-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 mb-6">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM10 13L14 17M14 13L10 17" />
+            </svg>
+        </div>
+        <h3 class="text-2xl font-black text-amber-950 dark:text-amber-300 mb-3">Establecimiento Cerrado</h3>
+        <p class="text-amber-800 dark:text-amber-400 text-sm leading-relaxed mb-6">
+            {% if es_feriado %}
+                El club permanece cerrado por feriado nacional. No se admiten reservas ni se programan turnos para este día.
+            {% else %}
+                El club permanece cerrado los domingos. No se admiten reservas ni se programan turnos para este día de la semana.
+            {% endif %}
+        </p>
+        <p class="text-xs text-amber-600/80 dark:text-amber-500/80 font-semibold uppercase tracking-wider">
+            {% if es_feriado %}
+                Por favor, seleccioná otra fecha.
+            {% else %}
+                Por favor, seleccioná un día de lunes a sábado.
+            {% endif %}
+        </p>
+    </div>
+    {% else %}
+        {% if turnos %}
+        <div class="grid grid-cols-1 gap-6">
+            {% for turno in turnos %}
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 dark:bg-gray-800 dark:border-gray-700 transition hover:shadow-md">
+                <!-- Header del Turno -->
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-gray-150 dark:border-gray-700">
+                    <div class="mb-2 sm:mb-0">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                            {{ turno.actividad.get_nombre_display }}
+                        </span>
+                        <h3 class="text-lg font-bold text-gray-800 dark:text-white mt-1">
+                            {{ turno.hora|stringformat:"02d" }}:00 – {{ turno.hora|add:1|stringformat:"02d" }}:00
+                        </h3>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <span class="px-3 py-1.5 text-xs font-semibold rounded-lg 
+                            {% if turno.esta_lleno %}text-red-700 bg-red-100 dark:bg-red-900/20 dark:text-red-400{% else %}text-gray-700 bg-gray-100 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                            Ocupación: {{ turno.cupos_ocupados }}/{{ turno.cupos_totales }} cupos
+                        </span>
+                        <div class="flex items-center gap-2">
+                            {% if turno.pk %}
+                                <a href="{% url 'editar_turno' turno.pk %}" 
+                                    class="text-xs font-bold text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 px-3 py-1.5 bg-green-50 dark:bg-green-900/10 rounded-lg transition">
+                                    Modificar
+                                </a>
+                                <a href="{% url 'eliminar_turno' turno.pk %}" 
+                                    class="text-xs font-bold text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 px-3 py-1.5 bg-red-50 dark:bg-red-900/10 rounded-lg transition">
+                                    Eliminar
+                                </a>
+                            {% else %}
+                                <a href="{% url 'editar_turno_slot' turno.actividad.id turno.fecha|date:'Y-m-d' turno.hora %}" 
+                                    class="text-xs font-bold text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 px-3 py-1.5 bg-green-50 dark:bg-green-900/10 rounded-lg transition">
+                                    Modificar
+                                </a>
+                                <a href="{% url 'eliminar_turno_slot' turno.actividad.id turno.fecha|date:'Y-m-d' turno.hora %}" 
+                                    class="text-xs font-bold text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 px-3 py-1.5 bg-red-50 dark:bg-red-900/10 rounded-lg transition">
+                                    Eliminar
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expandible Detalles Asistentes -->
+                <details class="group mt-4 pt-2">
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none text-sm text-green-600 dark:text-green-400 hover:underline">
+                        <span>
+                            Ver asistentes ({{ turno.cupos_ocupados }} confirmados, {{ turno.lista_espera.count }} en espera)
+                        </span>
+                        <span class="transition group-open:rotate-180 text-gray-400 dark:text-gray-500">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </span>
+                    </summary>
+                    
+                    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 pl-2">
+                        <!-- Confirmados -->
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 dark:text-gray-400">
+                                Confirmados
+                            </h4>
+                            <ul class="space-y-1.5">
+                                {% for reserva in turno.reservas.all %}
+                                    {% if reserva.estado == 'confirmada' %}
+                                        <li class="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                            <span class="font-medium">{{ reserva.usuario.get_full_name }}</span>
+                                            <span class="text-gray-400 dark:text-gray-500">&lt;{{ reserva.usuario.email }}&gt;</span>
+                                        </li>
+                                    {% endif %}
+                                {% empty %}
+                                    <li class="text-sm text-gray-400 dark:text-gray-500 italic">Sin reservas confirmadas.</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+
+                        <!-- Lista de espera -->
+                        <div>
+                            <h4 class="text-xs font-bold text-yellow-600 uppercase tracking-wider mb-2 dark:text-yellow-500">
+                                Lista de espera
+                            </h4>
+                            <ol class="space-y-1.5 list-decimal list-inside text-sm text-gray-700 dark:text-gray-300">
+                                {% for reserva in turno.lista_espera %}
+                                    <li class="text-sm text-gray-700 dark:text-gray-300">
+                                        <span class="font-medium pl-1">{{ reserva.usuario.get_full_name }}</span>
+                                        <span class="text-gray-400 dark:text-gray-500">&lt;{{ reserva.usuario.email }}&gt;</span>
+                                    </li>
+                                {% empty %}
+                                    <li class="text-sm text-gray-400 dark:text-gray-500 italic list-none">Vacía.</li>
+                                {% endfor %}
+                            </ol>
+                        </div>
+                    </div>
+                </details>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-gray-500 dark:text-gray-400">No hay turnos registrados que coincidan con los criterios seleccionados.</p>
+        </div>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock panel_content %}

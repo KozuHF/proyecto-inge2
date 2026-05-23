@@ -80,7 +80,7 @@ def _crear_reserva_para_turno(usuario, turno: Turno, tipo: str, grupo=None) -> R
 def obtener_fechas_candidatas_varios(fecha_referencia: date, hora: int) -> list[date]:
     """
     Devuelve las fechas del mes de `fecha_referencia` con el mismo día de la semana,
-    en el horario dado, excluyendo fechas pasadas (anteriores a hoy).
+    en el horario dado, excluyendo fechas pasadas (anteriores a hoy) y días no hábiles (domingos/feriados).
     El usuario elige cuáles reservar en el paso siguiente.
     """
     _validar_dia_habil(fecha_referencia)
@@ -90,7 +90,16 @@ def obtener_fechas_candidatas_varios(fecha_referencia: date, hora: int) -> list[
     anio = fecha_referencia.year
     mes = fecha_referencia.month
     fechas = _fechas_del_dia_en_mes(fecha_referencia.weekday(), anio, mes)
-    fechas = [f for f in fechas if f >= hoy]
+    
+    valid_fechas = []
+    for f in fechas:
+        if f >= hoy:
+            try:
+                _validar_dia_habil(f)
+                valid_fechas.append(f)
+            except ValidationError:
+                pass
+    fechas = valid_fechas
 
     if not fechas:
         raise ValidationError(
@@ -112,6 +121,9 @@ def _validar_fechas_seleccionadas(
         raise ValidationError(_("Hay fechas seleccionadas que no son válidas."))
     if not fechas_seleccionadas:
         raise ValidationError(_("Seleccioná al menos un día."))
+    for f in fechas_seleccionadas:
+        _validar_dia_habil(f)
+        _validar_no_pasado(f)
     return sorted(fechas_seleccionadas)
 
 
@@ -203,7 +215,9 @@ def reservar_varios_turnos(
 # ── Cancelación ───────────────────────────────────────────────────────────────
 
 @transaction.atomic
-def cancelar_reserva(usuario, reserva_id: int) -> Reserva:
+def cancelar_reserva(usuario, reserva_id: int) -> tuple[Reserva, bool]:
+    from apps.creditos import services as creditos_services
+
     try:
         reserva = Reserva.objects.select_related("turno", "turno__actividad").get(
             pk=reserva_id, usuario=usuario
@@ -211,19 +225,44 @@ def cancelar_reserva(usuario, reserva_id: int) -> Reserva:
     except Reserva.DoesNotExist:
         raise ValidationError(_("Reserva no encontrada."))
 
+    otorgar_credito = creditos_services.puede_otorgar_credito_cancelacion(reserva)
     reserva.cancelar()
-    return reserva
+
+    if otorgar_credito:
+        creditos_services.otorgar_credito_cancelacion(reserva)
+
+    return reserva, otorgar_credito
 
 
 @transaction.atomic
-def cancelar_grupo_mensual(usuario, grupo_id: int) -> GrupoReservaMensual:
+def cancelar_grupo_mensual(usuario, grupo_id: int) -> tuple[GrupoReservaMensual, int]:
+    from apps.creditos import services as creditos_services
+
     try:
-        grupo = GrupoReservaMensual.objects.get(pk=grupo_id, usuario=usuario)
+        grupo = (
+            GrupoReservaMensual.objects
+            .prefetch_related("reservas__turno__actividad")
+            .get(pk=grupo_id, usuario=usuario)
+        )
     except GrupoReservaMensual.DoesNotExist:
         raise ValidationError(_("Grupo de reserva no encontrado."))
 
+    reservas_activas = list(
+        grupo.reservas.filter(
+            estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA]
+        ).select_related("turno", "turno__actividad")
+    )
+    reservas_con_credito = [
+        r for r in reservas_activas
+        if creditos_services.puede_otorgar_credito_cancelacion(r)
+    ]
+
     grupo.cancelar_todo()
-    return grupo
+
+    creditos_otorgados = creditos_services.otorgar_creditos_por_cancelacion_grupo(
+        reservas_con_credito
+    )
+    return grupo, creditos_otorgados
 
 
 def reservas_futuras_de_usuario(usuario):

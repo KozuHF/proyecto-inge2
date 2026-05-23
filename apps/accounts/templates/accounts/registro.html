@@ -80,4 +80,83 @@
         </div>
     </main>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const nroDoc = document.getElementById('id_nro_documento');
+    const nombre = document.getElementById('id_nombre');
+    const apellido = document.getElementById('id_apellido');
+
+    if (nroDoc) {
+        nroDoc.setAttribute('maxlength', '8');
+        nroDoc.setAttribute('inputmode', 'numeric');
+        nroDoc.removeAttribute('required');
+
+        nroDoc.addEventListener('input', function() {
+            // Remove non-digit characters silently and clear custom validity
+            this.value = this.value.replace(/[^0-9]/g, '');
+            this.setCustomValidity('');
+        });
+    }
+
+    if (nombre) {
+        nombre.removeAttribute('required');
+        nombre.addEventListener('input', function() {
+            // Remove digits silently and clear custom validity
+            this.value = this.value.replace(/[0-9]/g, '');
+            this.setCustomValidity('');
+        });
+    }
+
+    if (apellido) {
+        apellido.removeAttribute('required');
+        apellido.addEventListener('input', function() {
+            // Remove digits silently and clear custom validity
+            this.value = this.value.replace(/[0-9]/g, '');
+            this.setCustomValidity('');
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', function(event) {
+            if (nroDoc) {
+                const val = nroDoc.value.trim();
+                if (val.length > 0) {
+                    if (val.length < 7 || val.length > 8 || /[^0-9]/.test(val)) {
+                        nroDoc.setCustomValidity('El documento debe tener entre 7 y 8 dígitos.');
+                        nroDoc.reportValidity();
+                        event.preventDefault();
+                        return false;
+                    }
+                } else {
+                    nroDoc.setCustomValidity('');
+                }
+            }
+            if (nombre) {
+                const val = nombre.value.trim();
+                if (val.length > 0 && /[0-9]/.test(val)) {
+                    nombre.setCustomValidity('El nombre no puede contener números.');
+                    nombre.reportValidity();
+                    event.preventDefault();
+                    return false;
+                } else {
+                    nombre.setCustomValidity('');
+                }
+            }
+            if (apellido) {
+                const val = apellido.value.trim();
+                if (val.length > 0 && /[0-9]/.test(val)) {
+                    apellido.setCustomValidity('El apellido no puede contener números.');
+                    apellido.reportValidity();
+                    event.preventDefault();
+                    return false;
+                } else {
+                    apellido.setCustomValidity('');
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock body %}
