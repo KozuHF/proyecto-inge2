@@ -1,0 +1,40 @@
+<div>
+  <label for="{{ form.numero_tarjeta.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
+    {{ form.numero_tarjeta.label }}
+  </label>
+  {{ form.numero_tarjeta }}
+  {% if form.numero_tarjeta.errors %}
+    <p class="mt-1 text-sm text-red-600">{{ form.numero_tarjeta.errors.0 }}</p>
+  {% endif %}
+</div>
+
+<div>
+  <label for="{{ form.titular.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
+    {{ form.titular.label }}
+  </label>
+  {{ form.titular }}
+  {% if form.titular.errors %}
+    <p class="mt-1 text-sm text-red-600">{{ form.titular.errors.0 }}</p>
+  {% endif %}
+</div>
+
+<div class="grid grid-cols-2 gap-4">
+  <div>
+    <label for="{{ form.vencimiento.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
+      {{ form.vencimiento.label }}
+    </label>
+    {{ form.vencimiento }}
+    {% if form.vencimiento.errors %}
+      <p class="mt-1 text-sm text-red-600">{{ form.vencimiento.errors.0 }}</p>
+    {% endif %}
+  </div>
+  <div>
+    <label for="{{ form.cvv.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
+      {{ form.cvv.label }}
+    </label>
+    {{ form.cvv }}
+    {% if form.cvv.errors %}
+      <p class="mt-1 text-sm text-red-600">{{ form.cvv.errors.0 }}</p>
+    {% endif %}
+  </div>
+</div>

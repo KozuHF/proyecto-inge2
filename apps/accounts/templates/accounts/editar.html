@@ -38,6 +38,12 @@
             </div>
             {% endif %}
 
+            {% if es_propio_perfil and aviso_penalidad %}
+            <div class="mb-6 p-4 text-sm {% if aviso_penalidad.tipo == 'activa' %}text-amber-900 bg-amber-50 border-2 border-amber-500{% else %}text-orange-900 bg-orange-50 border-2 border-orange-400{% endif %} rounded-lg" role="alert">
+                {{ aviso_penalidad.mensaje }}
+            </div>
+            {% endif %}
+
             {% if form.non_field_errors %}
             <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg{% if is_panel %} dark:bg-red-900/50 dark:text-red-300 dark:border-red-800{% endif %}" role="alert">
                 {{ form.non_field_errors|join:", " }}
@@ -76,6 +82,20 @@
                 </div>
             </div>
             {% endif %}
+
+            <div class="mb-6 p-4 border border-gray-200 rounded-xl bg-white">
+                <h2 class="text-sm font-bold text-gray-800 mb-2">Tarjeta de crédito</h2>
+                {% if tarjeta_guardada %}
+                <p class="font-mono text-sm font-semibold text-gray-900">{{ tarjeta_guardada.enmascarada }}</p>
+                <p class="text-xs text-gray-600 mt-1">{{ tarjeta_guardada.titular }} · Vence {{ tarjeta_guardada.vencimiento }}</p>
+                {% else %}
+                <p class="text-sm text-gray-500">No tenés tarjeta guardada.</p>
+                {% endif %}
+                <a href="{% url 'accounts:gestionar_tarjeta' %}"
+                   class="inline-block mt-3 text-sm font-semibold text-green-600 hover:text-green-700">
+                    {% if tarjeta_guardada %}Cambiar tarjeta{% else %}Registrar tarjeta{% endif %} →
+                </a>
+            </div>
             {% endif %}
 
             <form method="post" novalidate class="space-y-1">

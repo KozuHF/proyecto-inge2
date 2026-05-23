@@ -13,7 +13,6 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.actividades.models import Actividad
-from apps.turnos.abono_mensual import precio_turno_abono
 from apps.turnos.models import GrupoReservaMensual, Reserva
 
 from .constants import DIAS_VALIDEZ_CREDITO, EMOJI_POR_DEPORTE, HORAS_ANTELACION_CREDITO
@@ -42,9 +41,19 @@ def emoji_actividad(actividad: Actividad) -> str:
     return EMOJI_POR_DEPORTE.get(actividad.nombre, "🏅")
 
 
-def valor_credito_por_turno(actividad: Actividad, regla_cobro: str | None = None) -> Decimal:
+def valor_credito_por_turno(
+    actividad: Actividad,
+    regla_cobro: str | None = None,
+    usuario=None,
+    anio: int | None = None,
+    mes: int | None = None,
+) -> Decimal:
     if regla_cobro:
-        return precio_turno_abono(actividad.precio_turno, regla_cobro)
+        from apps.turnos.penalidad_cancelaciones import precio_turno_con_regla
+
+        return precio_turno_con_regla(
+            actividad.precio_turno, regla_cobro, usuario, anio, mes
+        )
     return actividad.precio_turno
 
 
@@ -177,6 +186,8 @@ def validar_creditos_pago(
     max_creditos: int,
     monto_cobro: Decimal,
     regla_cobro: str | None = None,
+    *,
+    valor_credito: Decimal | None = None,
 ) -> tuple[Decimal, Decimal, int]:
     if creditos_usados < 0:
         raise ValidationError(_("La cantidad de créditos no puede ser negativa."))
@@ -197,8 +208,9 @@ def validar_creditos_pago(
             % {"n": max_creditos}
         )
 
-    valor = valor_credito_por_turno(actividad, regla_cobro)
-    descuento = calcular_descuento_creditos(creditos_usados, valor, monto_cobro)
+    if valor_credito is None:
+        valor_credito = valor_credito_por_turno(actividad, regla_cobro)
+    descuento = calcular_descuento_creditos(creditos_usados, valor_credito, monto_cobro)
     monto_tarjeta = (monto_cobro - descuento).quantize(Decimal("0.01"))
 
     if descuento <= 0 and creditos_usados > 0:
@@ -215,7 +227,13 @@ def contexto_desde_checkout(usuario, datos) -> ContextoPagoCreditos:
     return ContextoPagoCreditos(
         actividad=datos.actividad,
         saldo=saldo,
-        valor_credito=valor_credito_por_turno(datos.actividad, datos.regla_cobro),
+        valor_credito=valor_credito_por_turno(
+            datos.actividad,
+            datos.regla_cobro,
+            usuario,
+            datos.fecha.year,
+            datos.fecha.month,
+        ),
         max_creditos=min(max_c, saldo),
         regla_cobro=datos.regla_cobro,
     )
@@ -227,7 +245,13 @@ def contexto_desde_reserva(usuario, reserva: Reserva) -> ContextoPagoCreditos:
     return ContextoPagoCreditos(
         actividad=reserva.turno.actividad,
         saldo=saldo,
-        valor_credito=valor_credito_por_turno(reserva.turno.actividad, regla),
+        valor_credito=valor_credito_por_turno(
+            reserva.turno.actividad,
+            regla,
+            usuario,
+            reserva.grupo_mensual.anio if reserva.grupo_mensual_id else None,
+            reserva.grupo_mensual.mes if reserva.grupo_mensual_id else None,
+        ),
         max_creditos=min(1, saldo),
         regla_cobro=regla,
     )
@@ -239,7 +263,9 @@ def contexto_desde_grupo(usuario, grupo: GrupoReservaMensual) -> ContextoPagoCre
     return ContextoPagoCreditos(
         actividad=grupo.actividad,
         saldo=saldo,
-        valor_credito=valor_credito_por_turno(grupo.actividad, grupo.regla_cobro),
+        valor_credito=valor_credito_por_turno(
+            grupo.actividad, grupo.regla_cobro, usuario, grupo.anio, grupo.mes
+        ),
         max_creditos=min(n, saldo),
         regla_cobro=grupo.regla_cobro,
     )

@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -145,18 +146,34 @@ def busqueda_global(request):
 
 def registro_usuario(request):
     """Registro de un nuevo usuario. Accesible sin autenticación."""
+    from apps.pagos.forms import TarjetaAltaForm
+    from apps.pagos import tarjetas as tarjetas_svc
+
     form = UsuarioCreacionForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
+    tarjeta_form = TarjetaAltaForm(request.POST or None)
+
+    if request.method == "POST" and form.is_valid() and tarjeta_form.is_valid():
         try:
             usuario = form.save()
+            tarjetas_svc.guardar_tarjeta(
+                usuario,
+                tarjeta_form.cleaned_data["numero_tarjeta"],
+                tarjeta_form.cleaned_data["titular"],
+                tarjeta_form.cleaned_data["vencimiento"],
+            )
             logger.info("Nuevo usuario registrado: %s (ID=%s)", usuario.email, usuario.pk)
             messages.success(request, _("Cuenta creada exitosamente. Podés iniciar sesión."))
             return redirect("accounts:login")
+        except ValidationError as exc:
+            messages.error(request, exc.message)
         except Exception as exc:
             logger.error("Error al registrar usuario: %s", exc)
             messages.error(request, _("Ocurrió un error al crear la cuenta. Intente nuevamente."))
 
-    return render(request, "accounts/registro.html", {"form": form})
+    return render(request, "accounts/registro.html", {
+        "form": form,
+        "tarjeta_form": tarjeta_form,
+    })
 
 
 @login_required
@@ -193,17 +210,55 @@ def editar_usuario(request, pk):
         return redirect("accounts:detalle", pk=pk)
 
     creditos_resumen = None
+    tarjeta_guardada = None
+    aviso_penalidad = None
     if es_propio_perfil:
         from apps.creditos.services import resumen_creditos_usuario
+        from apps.pagos import tarjetas as tarjetas_svc
+        from apps.turnos.penalidad_cancelaciones import aviso_penalidad_en_cuenta
 
         creditos_resumen = resumen_creditos_usuario(usuario)
+        tarjeta_guardada = tarjetas_svc.obtener_tarjeta_guardada(usuario)
+        aviso_penalidad = aviso_penalidad_en_cuenta(usuario)
 
     return render(request, "accounts/editar.html", {
         "form": form,
         "usuario": usuario,
         "es_propio_perfil": es_propio_perfil,
         "creditos_resumen": creditos_resumen,
+        "tarjeta_guardada": tarjeta_guardada,
+        "aviso_penalidad": aviso_penalidad,
         "is_panel": not es_propio_perfil,
+    })
+
+
+@login_required
+def gestionar_tarjeta(request):
+    """Cambiar o registrar la tarjeta guardada del usuario."""
+    from apps.pagos.forms import TarjetaAltaForm
+    from apps.pagos import tarjetas as tarjetas_svc
+
+    tarjeta_guardada = tarjetas_svc.obtener_tarjeta_guardada(request.user)
+    form = TarjetaAltaForm(request.POST or None)
+
+    if request.method == "POST" and form.is_valid():
+        if tarjeta_guardada:
+            tarjetas_svc.eliminar_tarjeta_guardada(request.user)
+        try:
+            tarjetas_svc.guardar_tarjeta(
+                request.user,
+                form.cleaned_data["numero_tarjeta"],
+                form.cleaned_data["titular"],
+                form.cleaned_data["vencimiento"],
+            )
+            messages.success(request, _("Tarjeta guardada correctamente."))
+            return redirect("accounts:editar", pk=request.user.pk)
+        except ValidationError as exc:
+            messages.error(request, exc.message)
+
+    return render(request, "accounts/gestionar_tarjeta.html", {
+        "form": form,
+        "tarjeta_guardada": tarjeta_guardada,
     })
 
 

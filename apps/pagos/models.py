@@ -82,3 +82,33 @@ class Pago(models.Model):
     @classmethod
     def generar_referencia(cls) -> str:
         return f"PAY-{uuid.uuid4().hex[:12].upper()}"
+
+
+class TarjetaGuardada(models.Model):
+    """Una tarjeta de crédito por usuario (mock académico). No se almacena el CVV."""
+
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="tarjeta_guardada",
+        verbose_name=_("Usuario"),
+    )
+    pan = models.CharField(
+        max_length=16,
+        verbose_name=_("Número de tarjeta (normalizado)"),
+    )
+    titular = models.CharField(max_length=100, verbose_name=_("Titular"))
+    vencimiento = models.CharField(max_length=5, verbose_name=_("Vencimiento (MM/AA)"))
+    ultimos_4 = models.CharField(max_length=4, verbose_name=_("Últimos 4 dígitos"))
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Tarjeta guardada")
+        verbose_name_plural = _("Tarjetas guardadas")
+
+    def __str__(self):
+        return f"•••• {self.ultimos_4} ({self.usuario})"
+
+    @property
+    def enmascarada(self) -> str:
+        return f"**** **** **** {self.ultimos_4}"

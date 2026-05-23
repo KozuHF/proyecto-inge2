@@ -409,3 +409,79 @@ class TurnosPanelTestCase(TestCase):
         self.assertContains(response, "contacto@club360.com")
         self.assertContains(response, "sugerencias@club360.com")
         self.assertContains(response, "reclamos@club360.com")
+
+
+class PenalidadCancelacionesTestCase(TestCase):
+    """Penalización: 3+ cancelaciones de abono mensual en un mes → sin 20 % el mes siguiente."""
+
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user(
+            email="penal@test.com",
+            nombre="Penal",
+            apellido="Test",
+            nro_documento="55555555",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.USER,
+        )
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL,
+            defaults={"cupos": 5, "precio_turno": Decimal("5000.00")},
+        )
+        self.actividad.precio_turno = Decimal("5000.00")
+        self.actividad.save()
+
+    def _registrar_cancelaciones(self, cantidad: int, anio: int, mes: int):
+        from apps.turnos.models import CancelacionAbonoMensual
+
+        for _ in range(cantidad):
+            CancelacionAbonoMensual.objects.create(
+                usuario=self.usuario,
+                anio_cancelacion=anio,
+                mes_cancelacion=mes,
+            )
+
+    def test_tres_cancelaciones_quitan_descuento_mes_siguiente(self):
+        from apps.turnos.abono_mensual import REGLA_SEGUNDA_QUINCENA, monto_total_desde_fechas
+        from apps.turnos.penalidad_cancelaciones import usuario_penalizado_descuento_segunda_quincena
+
+        self._registrar_cancelaciones(3, 2026, 5)
+        self.assertTrue(
+            usuario_penalizado_descuento_segunda_quincena(self.usuario, 2026, 6)
+        )
+        fechas = [date(2026, 6, 16), date(2026, 6, 23)]
+        total, regla, descuento = monto_total_desde_fechas(
+            self.actividad, fechas, usuario=self.usuario, anio=2026, mes=6
+        )
+        self.assertEqual(regla, REGLA_SEGUNDA_QUINCENA)
+        self.assertEqual(descuento, Decimal("0"))
+        self.assertEqual(total, Decimal("10000.00"))
+
+    def test_menos_de_tres_cancelaciones_mantiene_descuento(self):
+        from apps.turnos.abono_mensual import monto_total_desde_fechas
+
+        self._registrar_cancelaciones(2, 2026, 5)
+        fechas = [date(2026, 6, 16), date(2026, 6, 23)]
+        total, _, descuento = monto_total_desde_fechas(
+            self.actividad, fechas, usuario=self.usuario, anio=2026, mes=6
+        )
+        self.assertEqual(descuento, Decimal("0.20"))
+        self.assertEqual(total, Decimal("8000.00"))
+
+    def test_beneficio_se_restaura_al_tercer_mes(self):
+        from apps.turnos.penalidad_cancelaciones import usuario_penalizado_descuento_segunda_quincena
+
+        self._registrar_cancelaciones(3, 2026, 5)
+        self.assertFalse(
+            usuario_penalizado_descuento_segunda_quincena(self.usuario, 2026, 7)
+        )
+
+    def test_mensaje_reserva_sin_beneficio(self):
+        from apps.turnos.penalidad_cancelaciones import mensaje_sin_beneficio_segunda_quincena
+
+        self._registrar_cancelaciones(3, 2026, 5)
+        msg = mensaje_sin_beneficio_segunda_quincena(self.usuario, 2026, 6)
+        self.assertIsNotNone(msg)
+        self.assertIn("junio", msg.lower())
+        self.assertIn("2026", msg)
+        self.assertIn("no puede acceder", msg.lower())

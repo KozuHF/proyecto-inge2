@@ -51,9 +51,15 @@
             </div>
           {% endif %}
           {% if es_varios and checkout.regla_cobro == "segunda_quincena" %}
+            {% if aviso_sin_beneficio %}
+            <div class="px-4 py-3 text-sm text-amber-900 bg-amber-50 border-t border-amber-200" role="alert">
+              {{ aviso_sin_beneficio }}
+            </div>
+            {% else %}
             <div class="px-4 py-3 text-xs text-green-800 bg-green-50">
               Abono del 16 en adelante: incluye 20&nbsp;% de descuento. Solo pago total.
             </div>
+            {% endif %}
           {% elif es_varios %}
             <div class="px-4 py-3 text-xs text-amber-800 bg-amber-50">
               Incluye turnos del 1 al 15: el abono debe estar pagado antes del día 11 del mes.
@@ -72,7 +78,9 @@
             <span class="text-gray-500">Turnos incluidos</span>
             <span class="font-semibold text-gray-800">{{ grupo.cantidad_turnos_activos }}</span>
           </div>
-          {% if grupo.tiene_descuento %}
+          {% if aviso_sin_beneficio %}
+            <div class="px-4 py-3 text-sm text-amber-900 bg-amber-50" role="alert">{{ aviso_sin_beneficio }}</div>
+          {% elif grupo.tiene_descuento %}
             <div class="px-4 py-3 text-xs text-green-800 bg-green-50">20&nbsp;% de descuento aplicado al abono.</div>
           {% elif grupo.permite_pago_sena %}
             <div class="px-4 py-3 text-xs text-amber-800 bg-amber-50">Pagá el total antes del día 11 del mes.</div>
@@ -129,8 +137,23 @@
     {% endif %}
 
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8">
-      <form method="post" class="space-y-4">
+      {{ montos_pago|json_script:"montos-pago-data" }}
+      <form method="post" class="space-y-4" id="form-pago"
+            data-valor-credito="{{ valor_credito_pago }}">
         {% csrf_token %}
+
+        {% if form.errors %}
+        <div class="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg" role="alert">
+          {% if form.non_field_errors %}
+            <p class="font-semibold mb-1">{{ form.non_field_errors|join:", " }}</p>
+          {% endif %}
+          {% for field in form %}
+            {% if field.errors %}
+              <p><strong>{{ field.label }}:</strong> {{ field.errors|join:", " }}</p>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
 
         <div>
           <h3 class="text-sm font-semibold text-gray-700 mb-3">Elegí cómo pagar</h3>
@@ -169,48 +192,53 @@
         {% endif %}
 
         <hr class="border-gray-200">
-        <p class="text-xs text-gray-500">Completá la tarjeta solo si el pago no queda cubierto íntegramente con créditos.</p>
 
-        <div>
-          <label for="{{ form.numero_tarjeta.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
-            {{ form.numero_tarjeta.label }}
-          </label>
-          {{ form.numero_tarjeta }}
-          {% if form.numero_tarjeta.errors %}
-            <p class="mt-1 text-sm text-red-600">{{ form.numero_tarjeta.errors.0 }}</p>
-          {% endif %}
-        </div>
+        <div id="seccion-tarjeta" class="space-y-4">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">Medio de pago</h3>
 
-        <div>
-          <label for="{{ form.titular.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
-            {{ form.titular.label }}
-          </label>
-          {{ form.titular }}
-          {% if form.titular.errors %}
-            <p class="mt-1 text-sm text-red-600">{{ form.titular.errors.0 }}</p>
-          {% endif %}
-        </div>
-
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label for="{{ form.vencimiento.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
-              {{ form.vencimiento.label }}
-            </label>
-            {{ form.vencimiento }}
-            {% if form.vencimiento.errors %}
-              <p class="mt-1 text-sm text-red-600">{{ form.vencimiento.errors.0 }}</p>
-            {% endif %}
+        {% if tarjeta_guardada and not forzar_cambiar_tarjeta %}
+          <div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <p class="text-xs text-green-800 uppercase tracking-wide mb-1">Tarjeta guardada</p>
+            <p class="font-mono font-semibold text-gray-900">{{ tarjeta_guardada.enmascarada }}</p>
+            <p class="text-sm text-gray-600">{{ tarjeta_guardada.titular }} · Vence {{ tarjeta_guardada.vencimiento }}</p>
+          </div>
+          <input type="hidden" name="modo_tarjeta" value="guardada">
+          <div class="mb-3">
+            <a href="?cambiar=1" class="text-sm font-semibold text-green-600 hover:text-green-700">
+              Cambiar tarjeta →
+            </a>
           </div>
           <div>
             <label for="{{ form.cvv.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
-              {{ form.cvv.label }}
+              {{ form.cvv.label }} (confirmación)
             </label>
             {{ form.cvv }}
             {% if form.cvv.errors %}
               <p class="mt-1 text-sm text-red-600">{{ form.cvv.errors.0 }}</p>
             {% endif %}
           </div>
+        {% else %}
+          {% if tarjeta_guardada %}
+          <p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+            Al confirmar, se reemplazará tu tarjeta guardada por la nueva.
+            <a href="{{ request.path }}" class="font-semibold text-green-600 hover:underline ml-1">Usar la tarjeta actual</a>
+          </p>
+          <input type="hidden" name="modo_tarjeta" value="nueva">
+          {% else %}
+          <p class="text-xs text-gray-500 mb-3">Registrá una tarjeta de demostración. Quedará guardada para tus próximos pagos.</p>
+          <input type="hidden" name="modo_tarjeta" value="nueva">
+          {% endif %}
+          {% include "pagos/_campos_tarjeta.html" %}
+        {% endif %}
+
+        <p id="ayuda-tarjeta" class="text-xs text-gray-500 mt-3">
+          Completá el pago con tarjeta solo si no queda cubierto con créditos. CVV de prueba: 123.
+        </p>
         </div>
+
+        <p id="ayuda-solo-creditos" class="hidden text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+          El total queda cubierto con tus créditos. No se realizará ningún cargo con tarjeta.
+        </p>
 
         <div class="flex gap-3 pt-2">
           {% if es_checkout %}
@@ -228,7 +256,7 @@
               Cancelar
             </a>
           {% endif %}
-          <button type="submit"
+          <button type="submit" id="btn-confirmar"
                   class="flex-1 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
             Confirmar pago
           </button>
@@ -241,55 +269,6 @@
 {% endblock content %}
 
 {% block extra_scripts %}
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    const cardInput = document.getElementById('id_numero_tarjeta');
-    const expiryInput = document.getElementById('id_vencimiento');
-    const cvvInput = document.getElementById('id_cvv');
-    const nameInput = document.getElementById('id_titular');
-
-    if (cardInput) {
-      cardInput.setAttribute('maxlength', '16');
-      cardInput.addEventListener('input', function() {
-        this.value = this.value.replace(/\D/g, '').slice(0, 16);
-      });
-    }
-
-    if (expiryInput) {
-      expiryInput.setAttribute('maxlength', '5');
-      expiryInput.addEventListener('input', function() {
-        let selectionStart = this.selectionStart;
-        let val = this.value.replace(/\D/g, '');
-        if (val.length > 4) val = val.slice(0, 4);
-
-        let formatted = '';
-        if (val.length > 2) {
-          formatted = val.slice(0, 2) + '/' + val.slice(2);
-        } else {
-          formatted = val;
-        }
-
-        if (this.value !== formatted) {
-          let diff = formatted.length - this.value.length;
-          this.value = formatted;
-          this.setSelectionRange(selectionStart + diff, selectionStart + diff);
-        }
-      });
-    }
-
-    if (cvvInput) {
-      cvvInput.setAttribute('maxlength', '4');
-      cvvInput.addEventListener('input', function() {
-        this.value = this.value.replace(/\D/g, '').slice(0, 4);
-      });
-    }
-
-    if (nameInput) {
-      nameInput.addEventListener('input', function() {
-        this.value = this.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
-      });
-    }
-  });
-</script>
+{% include "pagos/_tarjeta_scripts.html" %}
 {% endblock extra_scripts %}
 

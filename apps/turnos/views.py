@@ -234,6 +234,7 @@ def paso_seleccion_fechas(request):
                 fechas_seleccionadas=[
                     date_type.fromisoformat(f) for f in wizard["fechas_seleccionadas"]
                 ],
+                usuario=request.user,
             )
             _wizard_set(request, wizard)
             return redirect("pagos:pagar_wizard")
@@ -248,6 +249,12 @@ def paso_seleccion_fechas(request):
     ]
     mes_nombre = meses[fecha_ref.month - 1]
 
+    from .penalidad_cancelaciones import mensaje_sin_beneficio_segunda_quincena
+
+    aviso_sin_beneficio = mensaje_sin_beneficio_segunda_quincena(
+        request.user, fecha_ref.year, fecha_ref.month
+    )
+
     return render(request, "turnos/paso_seleccion_fechas.html", {
         "form": form,
         "actividad": actividad,
@@ -256,6 +263,7 @@ def paso_seleccion_fechas(request):
         "dia_nombre": dia_nombre,
         "mes_nombre": mes_nombre,
         "precio_turno": actividad.precio_turno,
+        "aviso_sin_beneficio": aviso_sin_beneficio,
         "paso": 5,
         "modo": wizard["modo"],
     })

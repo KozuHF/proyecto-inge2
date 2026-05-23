@@ -1,35 +1,73 @@
-import calendar
-import re
-from datetime import date
+from decimal import Decimal
 
 from django import forms
-from django.utils import timezone
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.translation import gettext_lazy as _
 
 from apps.creditos.services import ContextoPagoCreditos
 
+from . import tarjetas
 from .services import TIPO_SENA, normalizar_numero_tarjeta
 
+INPUT_TARJETA = (
+    "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
+    "focus:ring-green-500 focus:border-green-500 block w-full p-2.5"
+)
 
-def _ultimo_dia_del_mes(anio: int, mes: int) -> date:
-    ultimo = calendar.monthrange(anio, mes)[1]
-    return date(anio, mes, ultimo)
 
+class TarjetaAltaForm(forms.Form):
+    """Alta o reemplazo de tarjeta guardada (registro o Mi cuenta)."""
 
-def parsear_vencimiento(valor: str) -> tuple[int, int]:
-    normalizado = valor.strip().replace("-", "/")
-    coincidencia = re.match(r"^(\d{2})/(\d{2}|\d{4})$", normalizado)
-    if not coincidencia:
-        raise ValueError("formato")
+    numero_tarjeta = forms.CharField(
+        label=_("Número de tarjeta"),
+        max_length=19,
+        widget=forms.TextInput(
+            attrs={
+                "class": INPUT_TARJETA,
+                "placeholder": "0000000000000000",
+                "autocomplete": "off",
+                "inputmode": "numeric",
+            }
+        ),
+    )
+    titular = forms.CharField(
+        label=_("Titular"),
+        max_length=100,
+        widget=forms.TextInput(
+            attrs={"class": INPUT_TARJETA, "placeholder": "Nombre Apellido"}
+        ),
+    )
+    vencimiento = forms.CharField(
+        label=_("Vencimiento (MM/AA)"),
+        max_length=7,
+        widget=forms.TextInput(
+            attrs={"class": INPUT_TARJETA, "placeholder": "06/29", "autocomplete": "off"}
+        ),
+    )
+    cvv = forms.CharField(
+        label=_("CVV"),
+        max_length=4,
+        widget=forms.PasswordInput(
+            attrs={"class": INPUT_TARJETA, "placeholder": "123", "autocomplete": "off"}
+        ),
+    )
 
-    mes = int(coincidencia.group(1))
-    anio_str = coincidencia.group(2)
-    anio = 2000 + int(anio_str) if len(anio_str) == 2 else int(anio_str)
+    def clean_numero_tarjeta(self):
+        return tarjetas.validar_numero_tarjeta_campo(self.cleaned_data.get("numero_tarjeta", ""))
 
-    if mes < 1 or mes > 12:
-        raise ValueError("mes")
+    def clean_vencimiento(self):
+        return tarjetas.validar_vencimiento_campo(self.cleaned_data.get("vencimiento", ""))
 
-    return mes, anio
+    def clean_cvv(self):
+        cvv = (self.cleaned_data.get("cvv") or "").strip()
+        tarjetas.validar_cvv(cvv)
+        return cvv
+
+    def clean_titular(self):
+        titular = (self.cleaned_data.get("titular") or "").strip()
+        if not titular:
+            raise forms.ValidationError(_("Este campo es obligatorio."))
+        return titular
 
 
 class TarjetaPagoForm(forms.Form):
@@ -52,15 +90,25 @@ class TarjetaPagoForm(forms.Form):
             }
         ),
     )
+    modo_tarjeta = forms.ChoiceField(
+        label=_("Tarjeta"),
+        choices=[
+            (tarjetas.MODO_TARJETA_GUARDADA, _("Usar tarjeta guardada")),
+            (tarjetas.MODO_TARJETA_NUEVA, _("Cambiar tarjeta")),
+        ],
+        widget=forms.RadioSelect(
+            attrs={"class": "w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"},
+        ),
+        required=False,
+    )
     numero_tarjeta = forms.CharField(
         label=_("Número de tarjeta"),
         max_length=19,
         required=False,
         widget=forms.TextInput(
             attrs={
-                "class": "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
-                         "focus:ring-green-500 focus:border-green-500 block w-full p-2.5",
-                "placeholder": "0000 0000 0000 0000",
+                "class": INPUT_TARJETA,
+                "placeholder": "0000000000000000",
                 "autocomplete": "off",
                 "inputmode": "numeric",
             }
@@ -71,11 +119,7 @@ class TarjetaPagoForm(forms.Form):
         max_length=100,
         required=False,
         widget=forms.TextInput(
-            attrs={
-                "class": "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
-                         "focus:ring-green-500 focus:border-green-500 block w-full p-2.5",
-                "placeholder": "Nombre Apellido",
-            }
+            attrs={"class": INPUT_TARJETA, "placeholder": "Nombre Apellido"}
         ),
     )
     vencimiento = forms.CharField(
@@ -83,12 +127,7 @@ class TarjetaPagoForm(forms.Form):
         max_length=7,
         required=False,
         widget=forms.TextInput(
-            attrs={
-                "class": "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
-                         "focus:ring-green-500 focus:border-green-500 block w-full p-2.5",
-                "placeholder": "06/29",
-                "autocomplete": "off",
-            }
+            attrs={"class": INPUT_TARJETA, "placeholder": "06/29", "autocomplete": "off"}
         ),
     )
     cvv = forms.CharField(
@@ -96,12 +135,7 @@ class TarjetaPagoForm(forms.Form):
         max_length=4,
         required=False,
         widget=forms.PasswordInput(
-            attrs={
-                "class": "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
-                         "focus:ring-green-500 focus:border-green-500 block w-full p-2.5",
-                "placeholder": "123",
-                "autocomplete": "off",
-            }
+            attrs={"class": INPUT_TARJETA, "placeholder": "123", "autocomplete": "off"}
         ),
     )
 
@@ -110,10 +144,18 @@ class TarjetaPagoForm(forms.Form):
         *args,
         opciones_pago=None,
         creditos_ctx: ContextoPagoCreditos | None = None,
+        tarjeta_guardada=None,
+        forzar_cambiar_tarjeta: bool = False,
+        usuario=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.creditos_ctx = creditos_ctx
+        self.tarjeta_guardada = tarjeta_guardada
+        self.usuario = usuario
+        self.opciones_pago = opciones_pago or []
+        self.usar_solo_guardada = bool(tarjeta_guardada) and not forzar_cambiar_tarjeta
+        self._requiere_tarjeta = True
 
         if opciones_pago is not None:
             self.fields["tipo_pago"].choices = [
@@ -128,6 +170,53 @@ class TarjetaPagoForm(forms.Form):
         else:
             self.fields["creditos_usados"].widget.attrs["max"] = str(creditos_ctx.max_creditos)
 
+        if not tarjeta_guardada:
+            self.fields["modo_tarjeta"].widget = forms.HiddenInput()
+            self.fields["modo_tarjeta"].initial = tarjetas.MODO_TARJETA_NUEVA
+            self.usar_solo_guardada = False
+        elif forzar_cambiar_tarjeta:
+            self.fields["modo_tarjeta"].initial = tarjetas.MODO_TARJETA_NUEVA
+            self.usar_solo_guardada = False
+        else:
+            self.fields["modo_tarjeta"].initial = tarjetas.MODO_TARJETA_GUARDADA
+
+    @property
+    def modo_guardada(self) -> bool:
+        if not self.tarjeta_guardada:
+            return False
+        if self.is_bound:
+            return self.data.get("modo_tarjeta") == tarjetas.MODO_TARJETA_GUARDADA
+        return self.usar_solo_guardada
+
+    @property
+    def requiere_tarjeta(self) -> bool:
+        return self._requiere_tarjeta
+
+    def monto_cobro_para_tipo(self, tipo_pago: str | None) -> Decimal:
+        for valor, _, monto in self.opciones_pago:
+            if valor == tipo_pago:
+                return Decimal(monto)
+        return Decimal("0")
+
+    def monto_tarjeta_tras_creditos(self, cleaned: dict) -> Decimal:
+        from . import services
+
+        tipo = cleaned.get("tipo_pago")
+        creditos = cleaned.get("creditos_usados") or 0
+        monto_cobro = self.monto_cobro_para_tipo(tipo)
+        try:
+            monto_tarjeta, _, _ = services._preparar_cobro_con_creditos(
+                self.usuario,
+                self.creditos_ctx,
+                creditos,
+                monto_cobro,
+                tipo_pago=tipo,
+            )
+        except DjangoValidationError as exc:
+            self.add_error("creditos_usados", exc.messages)
+            return monto_cobro
+        return monto_tarjeta
+
     def clean(self):
         cleaned = super().clean()
         creditos = cleaned.get("creditos_usados") or 0
@@ -136,6 +225,51 @@ class TarjetaPagoForm(forms.Form):
                 "tipo_pago",
                 _("No podés pagar seña si usás créditos. Elegí pago total."),
             )
+
+        self._requiere_tarjeta = self.monto_tarjeta_tras_creditos(cleaned) > 0
+        if not self._requiere_tarjeta:
+            return cleaned
+
+        modo = cleaned.get("modo_tarjeta") or tarjetas.MODO_TARJETA_NUEVA
+        if not self.tarjeta_guardada:
+            modo = tarjetas.MODO_TARJETA_NUEVA
+
+        cvv = (cleaned.get("cvv") or "").strip()
+        if not cvv:
+            self.add_error("cvv", _("Este campo es obligatorio."))
+        else:
+            try:
+                tarjetas.validar_cvv(cvv)
+            except DjangoValidationError as exc:
+                self.add_error("cvv", exc.messages)
+
+        if modo == tarjetas.MODO_TARJETA_GUARDADA:
+            if not self.tarjeta_guardada:
+                self.add_error("modo_tarjeta", _("No tenés tarjeta guardada."))
+            return cleaned
+
+        numero = cleaned.get("numero_tarjeta", "")
+        titular = (cleaned.get("titular") or "").strip()
+        vencimiento = cleaned.get("vencimiento", "")
+
+        if not numero:
+            self.add_error("numero_tarjeta", _("Este campo es obligatorio."))
+        else:
+            try:
+                tarjetas.validar_numero_tarjeta_campo(numero)
+            except forms.ValidationError as exc:
+                self.add_error("numero_tarjeta", exc.messages)
+
+        if not titular:
+            self.add_error("titular", _("Este campo es obligatorio."))
+        if not vencimiento:
+            self.add_error("vencimiento", _("Este campo es obligatorio."))
+        else:
+            try:
+                cleaned["vencimiento"] = tarjetas.validar_vencimiento_campo(vencimiento)
+            except forms.ValidationError as exc:
+                self.add_error("vencimiento", exc.messages)
+
         return cleaned
 
     def clean_creditos_usados(self):
@@ -155,46 +289,18 @@ class TarjetaPagoForm(forms.Form):
                 )
         return valor
 
-    def clean_numero_tarjeta(self):
-        numero = self.cleaned_data.get("numero_tarjeta", "")
-        if not numero:
-            return numero
-        pan = normalizar_numero_tarjeta(numero)
-        if len(pan) != 16 or not pan.isdigit():
-            raise forms.ValidationError(_("Ingresá los 16 dígitos de la tarjeta."))
-        return numero
-
-    def clean_vencimiento(self):
-        valor = (self.cleaned_data.get("vencimiento") or "").strip()
-        if not valor:
-            return valor
-        try:
-            mes, anio = parsear_vencimiento(valor)
-        except ValueError:
-            raise forms.ValidationError(_("Formato inválido. Usá MM/AA (ej: 06/29)."))
-
-        hoy = timezone.localdate()
-        vence_el = _ultimo_dia_del_mes(anio, mes)
-
-        if vence_el < hoy:
-            raise forms.ValidationError(_("La tarjeta está vencida."))
-
-        if anio > hoy.year + 15:
-            raise forms.ValidationError(_("La fecha de vencimiento no es válida."))
-
-        return f"{mes:02d}/{anio % 100:02d}"
-
-    def clean_cvv(self):
-        cvv = (self.cleaned_data.get("cvv") or "").strip()
-        if not cvv:
-            return cvv
-        if not cvv.isdigit() or len(cvv) not in (3, 4):
-            raise forms.ValidationError(_("CVV inválido."))
-        return cvv
-
     def validar_tarjeta_si_requerida(self, requiere_tarjeta: bool):
         if not requiere_tarjeta:
-            return
-        for nombre in ("numero_tarjeta", "titular", "vencimiento", "cvv"):
-            if not self.cleaned_data.get(nombre):
-                self.add_error(nombre, _("Este campo es obligatorio."))
+            self._requiere_tarjeta = False
+
+    def datos_tarjeta_para_pago(self, usuario):
+        """Devuelve (pan, cvv, reemplazar_guardada)."""
+        if not self.requiere_tarjeta:
+            return "", "", False
+        cvv = self.cleaned_data.get("cvv") or ""
+        modo = self.cleaned_data.get("modo_tarjeta") or tarjetas.MODO_TARJETA_NUEVA
+        if self.tarjeta_guardada and modo == tarjetas.MODO_TARJETA_GUARDADA:
+            pan = tarjetas.resolver_pan_pago(usuario, True, "")
+            return pan, cvv, False
+        pan = normalizar_numero_tarjeta(self.cleaned_data["numero_tarjeta"])
+        return pan, cvv, True
