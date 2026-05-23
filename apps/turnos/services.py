@@ -265,6 +265,35 @@ def cancelar_grupo_mensual(usuario, grupo_id: int) -> tuple[GrupoReservaMensual,
     return grupo, creditos_otorgados
 
 
+def reservas_futuras_de_usuario(usuario):
+    """
+    Devuelve las reservas activas (confirmadas o en espera) del usuario
+    cuyo turno todavía no ocurrió.
+    """
+    hoy = timezone.now().date()
+    return (
+        Reserva.objects
+        .filter(
+            usuario=usuario,
+            estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+            turno__fecha__gte=hoy,
+        )
+        .select_related("turno")
+    )
+
+
+@transaction.atomic
+def cancelar_reservas_futuras_de_usuario(usuario) -> int:
+    """
+    Cancela todas las reservas futuras del usuario, promoviendo la lista
+    de espera de cada turno liberado. Devuelve la cantidad cancelada.
+    """
+    reservas = list(reservas_futuras_de_usuario(usuario))
+    for reserva in reservas:
+        reserva.cancelar()
+    return len(reservas)
+
+
 # ── Consultas de apoyo para las vistas ───────────────────────────────────────
 
 def obtener_horas_disponibles(actividad: Actividad, fecha: date) -> list[dict]:

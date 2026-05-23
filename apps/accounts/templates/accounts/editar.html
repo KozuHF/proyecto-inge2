@@ -101,11 +101,20 @@
             </form>
 
             {% if es_propio_perfil %}
-            <p class="mt-6 text-center text-sm text-gray-500">
-                <a href="{% url 'accounts:cambiar_password' %}" class="font-semibold text-green-600 hover:text-green-700">
-                    Cambiar contraseña
-                </a>
-            </p>
+            <div class="mt-6 text-center space-y-2">
+                <p class="text-sm text-gray-500">
+                    <a href="{% url 'accounts:cambiar_password' %}" class="font-semibold text-green-600 hover:text-green-700">
+                        Cambiar contraseña
+                    </a>
+                </p>
+                {% if usuario.rol != 'admin' %}
+                <p class="text-sm">
+                    <a href="{% url 'accounts:eliminar_cuenta' %}" class="font-semibold text-red-600 hover:text-red-700">
+                        Eliminar mi cuenta
+                    </a>
+                </p>
+                {% endif %}
+            </div>
             {% endif %}
         </div>
     </div>
