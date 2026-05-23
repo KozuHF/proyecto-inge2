@@ -3,14 +3,14 @@
 {% block title %}{% if es_propio_perfil %}Mi cuenta{% else %}Editar usuario{% endif %} — Club360{% endblock title %}
 
 {% block content %}
-<div class="flex-grow flex items-center justify-center px-4 py-10 bg-gray-50">
+<div class="flex-grow flex items-center justify-center px-4 py-10 bg-gray-50{% if is_panel %} dark:bg-gray-900 text-gray-900 dark:text-gray-100{% endif %}">
     <div class="w-full max-w-lg">
 
         <div class="text-center mb-8">
-            <h1 class="text-3xl font-extrabold text-gray-900 mb-2">
+            <h1 class="text-3xl font-extrabold text-gray-900{% if is_panel %} dark:text-white{% endif %} mb-2">
                 {% if es_propio_perfil %}Mi cuenta{% else %}Editar usuario{% endif %}
             </h1>
-            <p class="text-gray-500 text-sm">
+            <p class="text-gray-500{% if is_panel %} dark:text-gray-400{% endif %} text-sm">
                 {% if es_propio_perfil %}
                 Actualizá tus datos personales. El DNI no puede modificarse.
                 {% else %}
@@ -19,9 +19,17 @@
             </p>
         </div>
 
-        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8">
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8{% if is_panel %} dark:bg-gray-800 dark:border-gray-700{% endif %}">
 
             {% include "accounts/_messages.html" %}
+
+            {% if not es_propio_perfil %}
+            <div class="mb-4">
+                <a href="{% url 'accounts:detalle' usuario.pk %}" class="inline-flex items-center text-xs font-semibold text-green-600 hover:text-green-700 transition">
+                    ← Volver al detalle
+                </a>
+            </div>
+            {% endif %}
 
             {% if es_propio_perfil and usuario.suspendido %}
             <div class="mb-6 p-4 text-sm font-semibold text-red-900 bg-red-100 border-2 border-red-500 rounded-lg" role="alert">
@@ -31,7 +39,7 @@
             {% endif %}
 
             {% if form.non_field_errors %}
-            <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg" role="alert">
+            <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg{% if is_panel %} dark:bg-red-900/50 dark:text-red-300 dark:border-red-800{% endif %}" role="alert">
                 {{ form.non_field_errors|join:", " }}
             </div>
             {% endif %}
@@ -78,10 +86,18 @@
                     {% endif %}
                 {% endfor %}
 
-                <button type="submit"
-                    class="w-full mt-4 text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition">
-                    Guardar cambios
-                </button>
+                <div class="flex flex-col sm:flex-row gap-3 pt-4">
+                    <button type="submit"
+                        class="flex-1 text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition">
+                        Guardar cambios
+                    </button>
+                    {% if not es_propio_perfil %}
+                    <a href="{% url 'accounts:detalle' usuario.pk %}"
+                        class="flex-1 text-center text-gray-700 bg-gray-100 hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-semibold rounded-lg text-sm px-5 py-3 transition dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">
+                        Cancelar
+                    </a>
+                    {% endif %}
+                </div>
             </form>
 
             {% if es_propio_perfil %}
@@ -94,5 +110,84 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const nroDoc = document.getElementById('id_nro_documento');
+    const nombre = document.getElementById('id_nombre');
+    const apellido = document.getElementById('id_apellido');
+
+    if (nroDoc) {
+        nroDoc.setAttribute('maxlength', '8');
+        nroDoc.setAttribute('inputmode', 'numeric');
+        nroDoc.removeAttribute('required');
+
+        nroDoc.addEventListener('input', function() {
+            // Remove non-digit characters silently and clear custom validity
+            this.value = this.value.replace(/[^0-9]/g, '');
+            this.setCustomValidity('');
+        });
+    }
+
+    if (nombre) {
+        nombre.removeAttribute('required');
+        nombre.addEventListener('input', function() {
+            // Remove digits silently and clear custom validity
+            this.value = this.value.replace(/[0-9]/g, '');
+            this.setCustomValidity('');
+        });
+    }
+
+    if (apellido) {
+        apellido.removeAttribute('required');
+        apellido.addEventListener('input', function() {
+            // Remove digits silently and clear custom validity
+            this.value = this.value.replace(/[0-9]/g, '');
+            this.setCustomValidity('');
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', function(event) {
+            if (nroDoc) {
+                const val = nroDoc.value.trim();
+                if (val.length > 0) {
+                    if (val.length < 7 || val.length > 8 || /[^0-9]/.test(val)) {
+                        nroDoc.setCustomValidity('El documento debe tener entre 7 y 8 dígitos.');
+                        nroDoc.reportValidity();
+                        event.preventDefault();
+                        return false;
+                    }
+                } else {
+                    nroDoc.setCustomValidity('');
+                }
+            }
+            if (nombre) {
+                const val = nombre.value.trim();
+                if (val.length > 0 && /[0-9]/.test(val)) {
+                    nombre.setCustomValidity('El nombre no puede contener números.');
+                    nombre.reportValidity();
+                    event.preventDefault();
+                    return false;
+                } else {
+                    nombre.setCustomValidity('');
+                }
+            }
+            if (apellido) {
+                const val = apellido.value.trim();
+                if (val.length > 0 && /[0-9]/.test(val)) {
+                    apellido.setCustomValidity('El apellido no puede contener números.');
+                    apellido.reportValidity();
+                    event.preventDefault();
+                    return false;
+                } else {
+                    apellido.setCustomValidity('');
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock content %}
 

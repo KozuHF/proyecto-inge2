@@ -14,6 +14,18 @@ HORA_CIERRE    = 22  # 22:00 → último turno inicia a las 21:00
 DIAS_HABILES   = [0, 1, 2, 3, 4, 5]  # Lunes=0 … Sábado=5 (domingo=6 cerrado)
 HORAS_VALIDAS  = list(range(HORA_APERTURA, HORA_CIERRE))  # [8, 9, …, 21]
 
+FERIADOS_INAMOVIBLES = {
+    (1, 1),    # Año Nuevo
+    (3, 24),   # Día de la Memoria
+    (4, 2),    # Día de las Malvinas
+    (5, 1),    # Día del Trabajador
+    (5, 25),   # Revolución de Mayo
+    (6, 20),   # Belgrano
+    (7, 9),    # Independencia
+    (12, 8),   # Inmaculada Concepción
+    (12, 25),  # Navidad
+}
+
 # Modos del wizard de reserva (sesión)
 MODO_TURNO_UNICO = "unico"
 MODO_VARIOS_TURNOS = "varios"
@@ -22,6 +34,8 @@ MODO_VARIOS_TURNOS = "varios"
 def _validar_dia_habil(fecha: "datetime.date"):
     if fecha.weekday() not in DIAS_HABILES:
         raise ValidationError(_("El establecimiento no abre los domingos."))
+    if (fecha.month, fecha.day) in FERIADOS_INAMOVIBLES:
+        raise ValidationError(_("El establecimiento permanece cerrado por feriado nacional."))
 
 
 def _validar_hora(hora: int):
@@ -70,12 +84,12 @@ class Turno(models.Model):
     )
 
     # ── Gancho para precios futuros ───────────────────────────────────────────
-    # precio_override = models.DecimalField(
-    #     max_digits=8, decimal_places=2,
-    #     null=True, blank=True,
-    #     verbose_name=_("Precio especial (override)"),
-    #     help_text=_("Si se completa, reemplaza el precio de la actividad."),
-    # )
+    precio_override = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        verbose_name=_("Precio"),
+        help_text=_("Si se completa, reemplaza el precio de la actividad."),
+    )
 
     class Meta:
         verbose_name        = _("Turno")
@@ -91,6 +105,28 @@ class Turno(models.Model):
     def clean(self):
         _validar_dia_habil(self.fecha)
         _validar_hora(self.hora)
+        if self.pk:
+            ocupados = self.reservas_confirmadas.count()
+            if self.cupos < ocupados:
+                raise ValidationError(
+                    _("No podés reducir los cupos por debajo de las reservas ya confirmadas (%(ocupados)d).")
+                    % {"ocupados": ocupados}
+                )
+
+    def promover_espera_segun_cupos(self):
+        """Promueve tantos usuarios en lista de espera a CONFIRMADA como cupos libres haya."""
+        libres = self.cupos_libres
+        if libres > 0:
+            espera = list(self.lista_espera[:libres])
+            for r in espera:
+                r.estado = Reserva.Estado.CONFIRMADA
+                r.save(update_fields=["estado"])
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if not is_new:
+            self.promover_espera_segun_cupos()
 
     # ── Propiedades calculadas ────────────────────────────────────────────────
 
@@ -119,9 +155,9 @@ class Turno(models.Model):
         return self.reservas.filter(estado=Reserva.Estado.EN_ESPERA).order_by("fecha_reserva")
 
     # ── Precio efectivo (para uso futuro) ─────────────────────────────────────
-    # @property
-    # def precio_efectivo(self):
-    #     return self.precio_override or self.actividad.precio_turno
+    @property
+    def precio_efectivo(self):
+        return self.precio_override if self.precio_override is not None else self.actividad.precio_turno
 
 
 # ── Reserva ───────────────────────────────────────────────────────────────────
@@ -266,7 +302,7 @@ class Reserva(models.Model):
     def monto_total(self):
         from .abono_mensual import precio_turno_abono
 
-        base = self.turno.actividad.precio_turno
+        base = self.turno.precio_efectivo
         if self.grupo_mensual_id:
             return precio_turno_abono(base, self.grupo_mensual.regla_cobro)
         return base
