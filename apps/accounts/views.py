@@ -11,6 +11,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
 from .decorators import rol_requerido
+from .models import Roles
 from .forms import (
     CambiarPasswordForm,
     LoginForm,
@@ -20,8 +21,10 @@ from .forms import (
     UsuarioFiltroForm,
     UsuarioModificacionForm,
     UsuarioPerfilForm,
+    EmpleadoCreacionForm,
 )
 from .repository import UsuarioRepository
+from . import services
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +100,8 @@ def vista_logout(request):
 #  CRUD de usuarios
 # ──────────────────────────────────────────────────────────────────
 
-@rol_requerido(["admin", "employee"])
+@login_required
+@rol_requerido("admin")
 def lista_usuarios(request):
     """
     Lista usuarios con búsqueda y filtros.
@@ -128,13 +132,14 @@ def lista_usuarios(request):
     })
 
 
-@rol_requerido(["admin", "employee"])
+@login_required
+@rol_requerido("admin")
 def busqueda_global(request):
     """Búsqueda rápida por término libre sobre nombre, apellido, email y documento."""
     termino = request.GET.get("q", "").strip()
     qs = UsuarioRepository.buscar_con_filtros(busqueda_global=termino) if termino else []
 
-    return render(request, "accounts/busqueda.html", {
+    return render(request, "accounts/busqueda_global.html", {
         "resultados": qs,
         "termino": termino,
     })
@@ -200,6 +205,7 @@ def editar_usuario(request, pk):
         "usuario": usuario,
         "es_propio_perfil": es_propio_perfil,
         "creditos_resumen": creditos_resumen,
+        "is_panel": not es_propio_perfil,
     })
 
 
@@ -216,6 +222,35 @@ def cambiar_password(request):
         return redirect("accounts:editar", pk=usuario.pk)
 
     return render(request, "accounts/cambiar_password.html", {"form": form})
+
+
+@login_required
+def eliminar_cuenta(request):
+    """
+    Permite al usuario autenticado eliminar permanentemente su cuenta.
+    GET muestra la página de confirmación; POST ejecuta el borrado.
+    Los administradores no pueden eliminar su propia cuenta.
+    """
+    usuario = request.user
+
+    # Las cuentas de administrador no pueden eliminarse desde esta sección.
+    if usuario.rol == Roles.ADMIN:
+        messages.error(
+            request,
+            _("Las cuentas de administrador no pueden eliminarse desde esta sección."),
+        )
+        return redirect("accounts:editar", pk=usuario.pk)
+
+    if request.method == "POST":
+        email = usuario.email
+        pk = usuario.pk
+        services.eliminar_cuenta(usuario)
+        logout(request)
+        logger.warning("Cuenta eliminada: %s (ID=%s)", email, pk)
+        messages.success(request, _("Tu cuenta fue eliminada."))
+        return redirect("home")
+
+    return render(request, "accounts/eliminar_cuenta.html")
 
 
 @rol_requerido("admin")
@@ -238,3 +273,28 @@ def activar_usuario(request, pk):
     logger.info("Usuario activado: %s (ID=%s) por %s", usuario.email, usuario.pk, request.user.email)
     messages.success(request, _("Usuario %s activado.") % usuario.get_full_name())
     return redirect("accounts:lista")
+
+
+@login_required
+@rol_requerido(["admin", "employee"])
+def panel_control(request):
+    """Panel de control para administradores y empleados."""
+    return render(request, "accounts/panel.html")
+
+
+@login_required
+@rol_requerido("admin")
+def crear_empleado(request):
+    """Permite al administrador registrar una nueva cuenta de empleado."""
+    form = EmpleadoCreacionForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            empleado = form.save()
+            logger.info("Nuevo empleado registrado: %s (ID=%s) por admin %s", empleado.email, empleado.pk, request.user.email)
+            messages.success(request, _("Cuenta de empleado creada exitosamente."))
+            return redirect("panel_control")
+        except Exception as exc:
+            logger.error("Error al registrar empleado: %s", exc)
+            messages.error(request, _("Ocurrió un error al crear la cuenta de empleado. Intente nuevamente."))
+    
+    return render(request, "accounts/crear_empleado.html", {"form": form})

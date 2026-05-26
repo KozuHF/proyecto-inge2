@@ -1,0 +1,96 @@
+{% extends "_base.html" %}
+{% load i18n %}
+
+{% block title %}Contacto — Club360{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="text-center mb-12">
+      <span class="inline-flex items-center bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-3">
+        ✉️ Canales de Comunicación
+      </span>
+      <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight sm:text-5xl">
+        Ponte en contacto
+      </h1>
+      <p class="mt-4 text-lg text-gray-500 max-w-2xl mx-auto">
+        ¿Tenés dudas, reclamos o sugerencias? Ponete en contacto directo con el área correspondiente.
+      </p>
+    </div>
+
+    <!-- Email Channels Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <!-- Dudas -->
+      <div class="bg-white border border-gray-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition duration-300 flex flex-col justify-between items-center text-center group">
+        <div class="w-16 h-16 bg-green-50 text-green-700 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition duration-300">
+          <span class="text-3xl">❓</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-gray-900 mb-2">Dudas y Consultas</h3>
+          <p class="text-gray-500 text-sm mb-4">
+            Escribinos para resolver cualquier duda sobre reservas, canchas, turnos o abonos mensuales.
+          </p>
+        </div>
+        <a href="mailto:contacto@club360.com" class="inline-flex items-center text-sm font-semibold text-green-600 hover:text-green-700 transition">
+          contacto@club360.com &rarr;
+        </a>
+      </div>
+
+      <!-- Sugerencias -->
+      <div class="bg-white border border-gray-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition duration-300 flex flex-col justify-between items-center text-center group">
+        <div class="w-16 h-16 bg-green-50 text-green-700 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition duration-300">
+          <span class="text-3xl">💡</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-gray-900 mb-2">Sugerencias e Ideas</h3>
+          <p class="text-gray-500 text-sm mb-4">
+            ¿Tenés alguna idea para mejorar el club? Queremos escucharte para seguir creciendo juntos.
+          </p>
+        </div>
+        <a href="mailto:sugerencias@club360.com" class="inline-flex items-center text-sm font-semibold text-green-600 hover:text-green-700 transition">
+          sugerencias@club360.com &rarr;
+        </a>
+      </div>
+
+      <!-- Reclamos -->
+      <div class="bg-white border border-gray-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition duration-300 flex flex-col justify-between items-center text-center group">
+        <div class="w-16 h-16 bg-green-50 text-green-700 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition duration-300">
+          <span class="text-3xl">⚠️</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-gray-900 mb-2">Reclamos y Quejas</h3>
+          <p class="text-gray-500 text-sm mb-4">
+            Si tuviste algún inconveniente con el servicio o las instalaciones, háznoslo saber de inmediato.
+          </p>
+        </div>
+        <a href="mailto:reclamos@club360.com" class="inline-flex items-center text-sm font-semibold text-green-600 hover:text-green-700 transition">
+          reclamos@club360.com &rarr;
+        </a>
+      </div>
+    </div>
+
+    <!-- General Info Bar -->
+    <div class="bg-green-700 text-white rounded-3xl p-8 relative overflow-hidden shadow-sm">
+      <div class="absolute -right-16 -top-16 w-48 h-48 bg-green-600 rounded-full opacity-30 pointer-events-none"></div>
+      <div class="absolute -left-12 -bottom-12 w-36 h-36 bg-green-800 rounded-full opacity-45 pointer-events-none"></div>
+      
+      <div class="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-6 items-center text-center md:text-left">
+        <div>
+          <h4 class="text-xs uppercase tracking-wider text-green-200 font-semibold mb-1">Ubicación</h4>
+          <p class="font-medium text-sm">Calle falsa 123, La Plata, Buenos Aires</p>
+        </div>
+        <div>
+          <h4 class="text-xs uppercase tracking-wider text-green-200 font-semibold mb-1">Teléfono</h4>
+          <p class="font-medium text-sm">+54 11 4876-2345</p>
+        </div>
+        <div>
+          <h4 class="text-xs uppercase tracking-wider text-green-200 font-semibold mb-1">Horario de Atención</h4>
+          <p class="font-medium text-sm">Lun a Sáb: 08:00 – 22:00</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock content %}

@@ -9,11 +9,18 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from .models import Usuario, validar_mayor_de_edad
+from .models import Usuario, validar_mayor_de_edad, Roles
 
 INPUT_CLASS = (
     "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
     "focus:ring-green-500 focus:border-green-500 block w-full p-2.5"
+)
+
+PANEL_INPUT_CLASS = (
+    "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
+    "focus:ring-green-500 focus:border-green-500 block w-full p-2.5 "
+    "dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400 "
+    "dark:focus:ring-green-500 dark:focus:border-green-500"
 )
 
 PASSWORD_HELP_TEXT = _(
@@ -134,6 +141,11 @@ class UsuarioCreacionForm(forms.ModelForm):
                 attrs={"type": "date", "class": INPUT_CLASS}
             ),
         }
+        error_messages = {
+            "nro_documento": {
+                "unique": _("Este número de documento ya se encuentra registrado."),
+            }
+        }
 
     def clean_fecha_nacimiento(self):
         fecha = self.cleaned_data.get("fecha_nacimiento")
@@ -247,15 +259,15 @@ class UsuarioModificacionForm(forms.ModelForm):
             "is_staff",
         )
         widgets = {
-            "nombre": forms.TextInput(attrs={"class": INPUT_CLASS}),
-            "apellido": forms.TextInput(attrs={"class": INPUT_CLASS}),
-            "nro_documento": forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "nombre": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS}),
+            "apellido": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS}),
+            "nro_documento": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS}),
             "email": forms.EmailInput(
-                attrs={"class": INPUT_CLASS, "autocomplete": "email"}
+                attrs={"class": PANEL_INPUT_CLASS, "autocomplete": "email"}
             ),
             "fecha_nacimiento": forms.DateInput(
                 format="%Y-%m-%d",
-                attrs={"type": "date", "class": INPUT_CLASS}
+                attrs={"type": "date", "class": PANEL_INPUT_CLASS}
             ),
         }
 
@@ -394,3 +406,101 @@ class UsuarioFiltroForm(forms.Form):
             choices=[("", "Todos"), ("True", "Activos"), ("False", "Inactivos")]
         ),
     )
+
+
+class EmpleadoCreacionForm(forms.ModelForm):
+    """
+    Formulario para crear un nuevo empleado desde el panel de administración.
+    No incluye el checkbox de impedimentos físicos ya que es para personal del club.
+    """
+    password1 = forms.CharField(
+        label=_("Contraseña"),
+        widget=forms.PasswordInput(
+            attrs={
+                "autocomplete": "new-password",
+                "placeholder": "••••••••",
+                "class": PANEL_INPUT_CLASS,
+            }
+        ),
+        min_length=8,
+        help_text=PASSWORD_HELP_TEXT,
+    )
+    password2 = forms.CharField(
+        label=_("Confirmar contraseña"),
+        widget=forms.PasswordInput(
+            attrs={
+                "autocomplete": "new-password",
+                "placeholder": "••••••••",
+                "class": PANEL_INPUT_CLASS,
+            }
+        ),
+    )
+
+    class Meta:
+        model = Usuario
+        fields = (
+            "nombre",
+            "apellido",
+            "nro_documento",
+            "email",
+            "fecha_nacimiento",
+        )
+        widgets = {
+            "nombre": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS, "placeholder": "Juan"}),
+            "apellido": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS, "placeholder": "Pérez"}),
+            "nro_documento": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS, "placeholder": "12345678"}),
+            "email": forms.EmailInput(
+                attrs={"class": PANEL_INPUT_CLASS, "placeholder": "tu@email.com", "autocomplete": "email"}
+            ),
+            "fecha_nacimiento": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"type": "date", "class": PANEL_INPUT_CLASS}
+            ),
+        }
+
+    def clean_fecha_nacimiento(self):
+        fecha = self.cleaned_data.get("fecha_nacimiento")
+        if fecha:
+            hoy = timezone.now().date()
+            edad = (
+                hoy.year - fecha.year
+                - ((hoy.month, hoy.day) < (fecha.month, fecha.day))
+            )
+            if edad < 18:
+                raise ValidationError(
+                    _("No se pueden registrar empleados menores de edad en el sistema.")
+                )
+        return fecha
+
+    def clean_password1(self):
+        password = self.cleaned_data.get("password1")
+        validar_fortaleza_password(password)
+        return password
+
+    def clean_password2(self):
+        p1 = self.cleaned_data.get("password1")
+        p2 = self.cleaned_data.get("password2")
+        if p1 and p2 and p1 != p2:
+            raise ValidationError(_("Las contraseñas no coinciden."))
+        return p2
+
+    def clean_email(self):
+        email = self.cleaned_data.get("email")
+        if email and _email_en_uso(email):
+            raise ValidationError(_("Este correo ya se encuentra en uso."))
+        return email
+
+    def clean_nro_documento(self):
+        doc = self.cleaned_data.get("nro_documento")
+        if doc and Usuario.objects.filter(nro_documento=doc).exists():
+            raise ValidationError(_("Este número de documento ya se encuentra registrado."))
+        return doc
+
+    def save(self, commit=True):
+        usuario = super().save(commit=False)
+        usuario.set_password(self.cleaned_data["password1"])
+        usuario.rol = Roles.EMPLOYEE
+        usuario.is_staff = True  # Empleados tienen acceso de staff en Django
+        if commit:
+            usuario.save()
+        return usuario

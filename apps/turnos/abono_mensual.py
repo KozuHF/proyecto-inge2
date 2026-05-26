@@ -46,10 +46,24 @@ def precio_turno_abono(precio_base: Decimal, regla_cobro: str) -> Decimal:
 def monto_total_desde_fechas(actividad, fechas: list[date]) -> tuple[Decimal, str, Decimal]:
     """Devuelve (monto_total, regla_cobro, descuento_porcentaje)."""
     regla = clasificar_regla_abono(fechas)
-    unitario = precio_turno_abono(actividad.precio_turno, regla)
-    total = (unitario * len(fechas)).quantize(Decimal("0.01"))
+    
+    from .models import Turno
+    
+    # Query all existing turnos for these dates and activity
+    turnos_existentes = {
+        t.fecha: t
+        for t in Turno.objects.filter(actividad=actividad, fecha__in=fechas)
+    }
+    
+    total = Decimal("0")
+    for f in fechas:
+        turno = turnos_existentes.get(f)
+        precio_base = turno.precio_efectivo if turno else actividad.precio_turno
+        precio_con_abono = precio_turno_abono(precio_base, regla)
+        total += precio_con_abono
+        
     descuento = DESCUENTO_SEGUNDA_QUINCENA if regla == REGLA_SEGUNDA_QUINCENA else Decimal("0")
-    return total, regla, descuento
+    return total.quantize(Decimal("0.01")), regla, descuento
 
 
 def permite_pago_sena(regla_cobro: str) -> bool:

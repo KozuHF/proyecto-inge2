@@ -23,7 +23,7 @@ def validar_mayor_de_edad(fecha_nacimiento):
     )
     if edad < 18:
         raise ValidationError(
-            _("El usuario debe tener al menos 18 años para registrarse. Acercarse a la sede con un adulto responsable para el registro.")
+            _("El usuario debe tener al menos 18 años para registrarse. De no ser así acercarse a la sede con un adulto responsable.")
         )
 
 
