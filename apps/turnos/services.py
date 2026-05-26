@@ -135,6 +135,7 @@ def calcular_monto_reserva_nueva(
     fecha: date,
     hora: int,
     fechas_seleccionadas: list[date] | None = None,
+    usuario=None,
 ):
     """Devuelve (monto_total, cantidad_turnos)."""
     from decimal import Decimal
@@ -149,7 +150,9 @@ def calcular_monto_reserva_nueva(
         if not fechas_seleccionadas:
             raise ValidationError(_("Seleccioná al menos un día para reservar."))
         fechas = _validar_fechas_seleccionadas(fechas_seleccionadas, fecha, hora)
-        total, _, _ = monto_total_desde_fechas(actividad, fechas)
+        total, _, _ = monto_total_desde_fechas(
+            actividad, fechas, usuario=usuario, anio=fecha.year, mes=fecha.month
+        )
         return total, len(fechas)
 
     raise ValidationError(_("Modo de reserva no válido."))
@@ -179,7 +182,13 @@ def reservar_varios_turnos(
     Crea reservas solo para las fechas que el usuario eligió.
     """
     fechas = _validar_fechas_seleccionadas(fechas_seleccionadas, fecha_referencia, hora)
-    _, regla_cobro, descuento = monto_total_desde_fechas(actividad, fechas)
+    _, regla_cobro, descuento = monto_total_desde_fechas(
+        actividad,
+        fechas,
+        usuario=usuario,
+        anio=fecha_referencia.year,
+        mes=fecha_referencia.month,
+    )
 
     grupo = GrupoReservaMensual.objects.create(
         usuario=usuario,
@@ -225,8 +234,14 @@ def cancelar_reserva(usuario, reserva_id: int) -> tuple[Reserva, bool]:
     except Reserva.DoesNotExist:
         raise ValidationError(_("Reserva no encontrada."))
 
+    from .penalidad_cancelaciones import registrar_cancelacion_abono_mensual
+
     otorgar_credito = creditos_services.puede_otorgar_credito_cancelacion(reserva)
+    era_abono = reserva.es_abonado_mensual
     reserva.cancelar()
+
+    if era_abono:
+        registrar_cancelacion_abono_mensual(reserva)
 
     if otorgar_credito:
         creditos_services.otorgar_credito_cancelacion(reserva)
@@ -252,10 +267,15 @@ def cancelar_grupo_mensual(usuario, grupo_id: int) -> tuple[GrupoReservaMensual,
             estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA]
         ).select_related("turno", "turno__actividad")
     )
+    from .penalidad_cancelaciones import registrar_cancelacion_abono_mensual
+
     reservas_con_credito = [
         r for r in reservas_activas
         if creditos_services.puede_otorgar_credito_cancelacion(r)
     ]
+
+    for reserva in reservas_activas:
+        registrar_cancelacion_abono_mensual(reserva)
 
     grupo.cancelar_todo()
 

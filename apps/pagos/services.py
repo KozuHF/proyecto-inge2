@@ -29,6 +29,7 @@ from apps.turnos.models import (
     Reserva,
 )
 
+from . import tarjetas
 from .models import Pago
 
 FRACCION_SENA = Decimal("0.5")
@@ -83,7 +84,7 @@ def monto_total_reserva(reserva: Reserva) -> Decimal:
     return reserva.monto_total
 
 
-def datos_desde_wizard(wizard: dict) -> DatosCheckout:
+def datos_desde_wizard(wizard: dict, usuario=None) -> DatosCheckout:
     requeridos = ("modo", "actividad_id", "fecha", "hora")
     if not all(k in wizard for k in requeridos):
         raise ValidationError(_("Datos de reserva incompletos. Volvé a iniciar el proceso."))
@@ -104,12 +105,21 @@ def datos_desde_wizard(wizard: dict) -> DatosCheckout:
         fechas_sel = [date_type.fromisoformat(f) for f in wizard["fechas_seleccionadas"]]
 
     monto_total, cantidad = turnos_services.calcular_monto_reserva_nueva(
-        actividad, modo, fecha, hora, fechas_seleccionadas=fechas_sel
+        actividad,
+        modo,
+        fecha,
+        hora,
+        fechas_seleccionadas=fechas_sel,
+        usuario=usuario,
     )
 
     regla_cobro = None
     if modo == MODO_VARIOS_TURNOS and fechas_sel:
-        regla_cobro = clasificar_regla_abono(fechas_sel)
+        from apps.turnos.abono_mensual import monto_total_desde_fechas
+
+        _, regla_cobro, _ = monto_total_desde_fechas(
+            actividad, fechas_sel, usuario=usuario, anio=fecha.year, mes=fecha.month
+        )
 
     return DatosCheckout(
         actividad=actividad,
@@ -276,11 +286,20 @@ def _preparar_cobro_con_creditos(
         ctx.max_creditos,
         monto_cobro,
         ctx.regla_cobro,
+        valor_credito=ctx.valor_credito,
     )
 
 
-def _validar_tarjeta(numero_tarjeta: str, ultimos: str, monto: Decimal, tipo_pago: str,
-                     usuario, reserva=None) -> ResultadoPago:
+def _validar_tarjeta(
+    numero_tarjeta: str,
+    ultimos: str,
+    monto: Decimal,
+    tipo_pago: str,
+    usuario,
+    reserva=None,
+    *,
+    cvv: str = "",
+) -> ResultadoPago:
     if monto <= 0:
         return ResultadoPago(exito=True)
 
@@ -302,6 +321,26 @@ def _validar_tarjeta(numero_tarjeta: str, ultimos: str, monto: Decimal, tipo_pag
         return _rechazar(
             _("Número de tarjeta inválido."),
             _("Número de tarjeta inválido. Debe tener 16 dígitos."),
+        )
+
+    try:
+        tarjetas.validar_cvv(cvv or "")
+    except ValidationError:
+        return _rechazar(
+            str(tarjetas.MENSAJE_CVV_INCORRECTO),
+            str(tarjetas.MENSAJE_CVV_INCORRECTO),
+        )
+
+    if not tarjetas.es_pan_demo(pan):
+        return _rechazar(
+            _("Tarjeta no habilitada en modo demostración."),
+            _("Tarjeta no válida para esta demostración."),
+        )
+
+    if not tarjetas.pan_tiene_fondos(pan):
+        return _rechazar(
+            _("Fondos insuficientes."),
+            _("Pago rechazado: fondos insuficientes."),
         )
 
     return ResultadoPago(exito=True)
@@ -371,12 +410,14 @@ def procesar_pago_y_reservar(
     numero_tarjeta: str,
     tipo_pago: str,
     creditos_usados: int = 0,
+    *,
+    cvv: str = "",
 ) -> ResultadoPago:
     """
     Valida el pago y, solo si es aprobado, crea la reserva (o el grupo mensual).
     Si el pago falla, no se crea ningún turno reservado.
     """
-    datos = datos_desde_wizard(wizard)
+    datos = datos_desde_wizard(wizard, usuario)
     if not turnos_services.usuario_puede_reservar(usuario):
         raise ValidationError(_("Tu cuenta está suspendida. No podés realizar reservas."))
     monto_cobro = calcular_monto_cobro_nueva(datos, tipo_pago)
@@ -387,7 +428,7 @@ def procesar_pago_y_reservar(
     ultimos = _ultimos_4_o_creditos(numero_tarjeta, creditos_efectivos)
 
     resultado_tarjeta = _validar_tarjeta(
-        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=None
+        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=None, cvv=cvv
     )
     if not resultado_tarjeta.exito:
         return resultado_tarjeta
@@ -472,6 +513,8 @@ def procesar_pago_reserva(
     numero_tarjeta: str,
     tipo_pago: str,
     creditos_usados: int = 0,
+    *,
+    cvv: str = "",
 ) -> ResultadoPago:
     """Pago de una reserva ya existente (ej. completar saldo desde Mis reservas)."""
     reserva = obtener_reserva_pagable(usuario, reserva_id)
@@ -483,7 +526,7 @@ def procesar_pago_reserva(
     ultimos = _ultimos_4_o_creditos(numero_tarjeta, creditos_efectivos)
 
     resultado_tarjeta = _validar_tarjeta(
-        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=reserva
+        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=reserva, cvv=cvv
     )
     if not resultado_tarjeta.exito:
         return resultado_tarjeta
@@ -529,6 +572,8 @@ def procesar_pago_grupo(
     numero_tarjeta: str,
     tipo_pago: str,
     creditos_usados: int = 0,
+    *,
+    cvv: str = "",
 ) -> ResultadoPago:
     """Paga o completa el saldo de todas las reservas activas del abono mensual."""
     grupo = obtener_grupo_pagable(usuario, grupo_id)
@@ -545,7 +590,7 @@ def procesar_pago_grupo(
     reserva_ref = reservas[0]
 
     resultado_tarjeta = _validar_tarjeta(
-        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=reserva_ref
+        numero_tarjeta, ultimos, monto_tarjeta, tipo_pago, usuario, reserva=reserva_ref, cvv=cvv
     )
     if not resultado_tarjeta.exito:
         return resultado_tarjeta

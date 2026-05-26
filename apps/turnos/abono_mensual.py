@@ -43,26 +43,37 @@ def precio_turno_abono(precio_base: Decimal, regla_cobro: str) -> Decimal:
     return precio_base
 
 
-def monto_total_desde_fechas(actividad, fechas: list[date]) -> tuple[Decimal, str, Decimal]:
+def monto_total_desde_fechas(
+    actividad,
+    fechas: list[date],
+    usuario=None,
+    anio: int | None = None,
+    mes: int | None = None,
+) -> tuple[Decimal, str, Decimal]:
     """Devuelve (monto_total, regla_cobro, descuento_porcentaje)."""
-    regla = clasificar_regla_abono(fechas)
-    
     from .models import Turno
-    
-    # Query all existing turnos for these dates and activity
+    from .penalidad_cancelaciones import (
+        descuento_segunda_quincena_para_usuario,
+        precio_turno_con_regla,
+    )
+
+    regla = clasificar_regla_abono(fechas)
+    anio = anio or fechas[0].year
+    mes = mes or fechas[0].month
+    descuento = descuento_segunda_quincena_para_usuario(usuario, anio, mes, regla)
+
     turnos_existentes = {
         t.fecha: t
         for t in Turno.objects.filter(actividad=actividad, fecha__in=fechas)
     }
-    
+
     total = Decimal("0")
     for f in fechas:
         turno = turnos_existentes.get(f)
         precio_base = turno.precio_efectivo if turno else actividad.precio_turno
-        precio_con_abono = precio_turno_abono(precio_base, regla)
+        precio_con_abono = precio_turno_con_regla(precio_base, regla, usuario, anio, mes)
         total += precio_con_abono
-        
-    descuento = DESCUENTO_SEGUNDA_QUINCENA if regla == REGLA_SEGUNDA_QUINCENA else Decimal("0")
+
     return total.quantize(Decimal("0.01")), regla, descuento
 
 
@@ -91,9 +102,13 @@ def plazo_pago_vencido(grupo) -> bool:
     return hoy.day >= DIA_LIMITE_PAGO_PRIMERA_QUINCENA
 
 
-def descripcion_regla(regla_cobro: str) -> str:
+def descripcion_regla(regla_cobro: str, *, con_descuento: bool = True) -> str:
     if regla_cobro == REGLA_SEGUNDA_QUINCENA:
-        return str(_("Abono del 16 en adelante: 20 % de descuento. Solo pago total."))
+        if con_descuento:
+            return str(_("Abono del 16 en adelante: 20 % de descuento. Solo pago total."))
+        return str(
+            _("Abono del 16 en adelante: sin descuento por cancelaciones del mes anterior. Solo pago total.")
+        )
     return str(
         _("Abono con turnos del 1 al 15: debe estar pagado en su totalidad antes del día %(dia)s.")
         % {"dia": DIA_LIMITE_PAGO_PRIMERA_QUINCENA}

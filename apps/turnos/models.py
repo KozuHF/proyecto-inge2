@@ -300,11 +300,14 @@ class Reserva(models.Model):
 
     @property
     def monto_total(self):
-        from .abono_mensual import precio_turno_abono
+        from .penalidad_cancelaciones import precio_turno_con_regla
 
         base = self.turno.precio_efectivo
         if self.grupo_mensual_id:
-            return precio_turno_abono(base, self.grupo_mensual.regla_cobro)
+            g = self.grupo_mensual
+            return precio_turno_con_regla(
+                base, g.regla_cobro, self.usuario, g.anio, g.mes
+            )
         return base
 
     @property
@@ -479,3 +482,42 @@ class GrupoReservaMensual(models.Model):
             Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA
         ]):
             reserva.cancelar()
+
+
+class CancelacionAbonoMensual(models.Model):
+    """
+    Registro de cancelación de un turno de abono mensual.
+    Cuenta para la penalización del 20 % (3+ en un mes → sin descuento el mes siguiente).
+    """
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="cancelaciones_abono_mensual",
+        verbose_name=_("Usuario"),
+    )
+    reserva = models.ForeignKey(
+        Reserva,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cancelaciones_abono_registradas",
+        verbose_name=_("Reserva"),
+    )
+    anio_cancelacion = models.PositiveSmallIntegerField(verbose_name=_("Año"))
+    mes_cancelacion = models.PositiveSmallIntegerField(verbose_name=_("Mes"))
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Cancelación abono mensual")
+        verbose_name_plural = _("Cancelaciones abono mensual")
+        ordering = ["-fecha_registro"]
+        indexes = [
+            models.Index(
+                fields=["usuario", "anio_cancelacion", "mes_cancelacion"],
+                name="cancel_abono_usuario_mes_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.usuario} – {self.mes_cancelacion:02d}/{self.anio_cancelacion}"

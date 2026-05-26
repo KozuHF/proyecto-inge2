@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Pago
+from .models import Pago, TarjetaGuardada
+
+
+@admin.register(TarjetaGuardada)
+class TarjetaGuardadaAdmin(admin.ModelAdmin):
+    list_display = ("usuario", "ultimos_4", "titular", "vencimiento", "fecha_actualizacion")
+    search_fields = ("usuario__email", "titular", "ultimos_4")
+    readonly_fields = ("pan", "fecha_actualizacion")
 
 
 @admin.register(Pago)

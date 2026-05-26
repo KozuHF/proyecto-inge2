@@ -24,9 +24,16 @@
           <strong>Turnos del 1 al 15:</strong> el abono debe estar pagado en su totalidad antes del día 11 del mes.
           Si no se cumple, se cancelan todos los turnos y la cuenta queda suspendida.
         </p>
+        {% if aviso_sin_beneficio %}
+        <p class="p-3 bg-amber-50 border-2 border-amber-500 rounded-lg text-amber-900" role="alert">
+          {{ aviso_sin_beneficio }}
+          Si elegís únicamente días del 16 en adelante, se cobrará el precio completo por turno.
+        </p>
+        {% else %}
         <p class="p-3 bg-green-50 border border-green-200 rounded-lg">
           <strong>Solo días del 16 en adelante:</strong> 20&nbsp;% de descuento y únicamente pago total (sin seña).
         </p>
+        {% endif %}
       </div>
 
       {% if messages %}

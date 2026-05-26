@@ -37,6 +37,7 @@ urlpatterns = [
     path("<int:pk>/desactivar/",      views.desactivar_usuario, name="desactivar"),
     path("<int:pk>/activar/",         views.activar_usuario,   name="activar"),
     path("cambiar-password/",         views.cambiar_password,  name="cambiar_password"),
+    path("mi-tarjeta/",               views.gestionar_tarjeta, name="gestionar_tarjeta"),
     path("eliminar-cuenta/",          views.eliminar_cuenta,   name="eliminar_cuenta"),
     path("crear-empleado/",           views.crear_empleado,    name="crear_empleado"),
 ]
