@@ -3,6 +3,14 @@
 import os
 import sys
 
+# Carga las variables del archivo .env (si existe) al entorno antes de Django.
+# Requiere python-dotenv instalado. Si no está, no rompe nada: se ignora.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 def main():
     """Run administrative tasks."""

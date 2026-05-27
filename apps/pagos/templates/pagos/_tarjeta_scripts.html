@@ -6,10 +6,76 @@ document.addEventListener('DOMContentLoaded', function() {
   const nameInput = document.getElementById('id_titular');
 
   if (cardInput) {
-    cardInput.setAttribute('maxlength', '16');
+    // 19 = 16 dígitos + 3 guiones. El backend remueve los guiones al validar.
+    cardInput.setAttribute('maxlength', '19');
     cardInput.addEventListener('input', function() {
-      this.value = this.value.replace(/\D/g, '').slice(0, 16);
+      const selectionStart = this.selectionStart;
+      const raw = this.value.replace(/\D/g, '').slice(0, 16);
+      const grupos = raw.match(/.{1,4}/g) || [];
+      const formatted = grupos.join('-');
+      if (this.value !== formatted) {
+        const diff = formatted.length - this.value.length;
+        this.value = formatted;
+        this.setSelectionRange(selectionStart + diff, selectionStart + diff);
+      }
     });
+
+    // ── Detección de marca (Visa, Mastercard, Cabal, Naranja) ───────────
+    // Reserva espacio a la derecha del input para que el ícono no se
+    // superponga con el texto.
+    cardInput.classList.add('pr-16');
+
+    const marcaCont = document.getElementById('marca-tarjeta');
+    const svgs = {
+      visa: document.getElementById('svg-visa'),
+      mastercard: document.getElementById('svg-mastercard'),
+      cabal: document.getElementById('svg-cabal'),
+      naranja: document.getElementById('svg-naranja'),
+    };
+
+    function mostrarMarca(marca) {
+      Object.values(svgs).forEach(function(s) { if (s) s.classList.add('hidden'); });
+      if (marca && svgs[marca] && marcaCont) {
+        svgs[marca].classList.remove('hidden');
+        marcaCont.classList.remove('hidden');
+        marcaCont.classList.add('flex');
+      } else if (marcaCont) {
+        marcaCont.classList.add('hidden');
+        marcaCont.classList.remove('flex');
+      }
+    }
+
+    function detectarMarca(digits) {
+      if (!digits) { mostrarMarca(null); return; }
+      // Visa: empieza con 4
+      if (digits[0] === '4') { mostrarMarca('visa'); return; }
+      // Cabal y Naranja (más específicos que Mastercard, los chequeamos primero)
+      if (digits.length >= 4) {
+        const cuatro = digits.slice(0, 4);
+        if (cuatro === '5895') { mostrarMarca('naranja'); return; }
+        if (cuatro === '5896' || cuatro === '6042' || cuatro === '6043'
+            || cuatro === '6044' || cuatro === '6045') {
+          mostrarMarca('cabal'); return;
+        }
+      }
+      // Mastercard: 51-55
+      if (digits.length >= 2) {
+        const dos = parseInt(digits.slice(0, 2), 10);
+        if (dos >= 51 && dos <= 55) { mostrarMarca('mastercard'); return; }
+      }
+      // Mastercard rango nuevo: 2221-2720
+      if (digits.length >= 4) {
+        const cuatro = parseInt(digits.slice(0, 4), 10);
+        if (cuatro >= 2221 && cuatro <= 2720) { mostrarMarca('mastercard'); return; }
+      }
+      mostrarMarca(null);
+    }
+
+    cardInput.addEventListener('input', function() {
+      detectarMarca(this.value.replace(/\D/g, ''));
+    });
+    // Si el campo viene pre-llenado al cargar (ej. al editar), detectamos también.
+    detectarMarca(cardInput.value.replace(/\D/g, ''));
   }
 
   if (expiryInput) {
@@ -17,8 +83,14 @@ document.addEventListener('DOMContentLoaded', function() {
     expiryInput.addEventListener('input', function() {
       let selectionStart = this.selectionStart;
       let val = this.value.replace(/\D/g, '');
+      // Padding del mes: si el primer dígito es 2-9, no puede ser un mes
+      // válido por sí solo (solo 10, 11 y 12 empiezan con 1). Le agregamos
+      // el "0" adelante y el "/" automáticamente para acelerar la carga.
+      if (val.length === 1 && parseInt(val[0], 10) >= 2) {
+        val = '0' + val;
+      }
       if (val.length > 4) val = val.slice(0, 4);
-      let formatted = val.length > 2 ? val.slice(0, 2) + '/' + val.slice(2) : val;
+      let formatted = val.length >= 2 ? val.slice(0, 2) + '/' + val.slice(2) : val;
       if (this.value !== formatted) {
         let diff = formatted.length - this.value.length;
         this.value = formatted;
@@ -28,9 +100,11 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   if (cvvInput) {
-    cvvInput.setAttribute('maxlength', '4');
+    // Las tarjetas de 16 dígitos (Visa, Mastercard, Cabal, Naranja) usan
+    // CVV de 3 dígitos. Solo Amex (15 dígitos) tiene CVV de 4, y no se soporta.
+    cvvInput.setAttribute('maxlength', '3');
     cvvInput.addEventListener('input', function() {
-      this.value = this.value.replace(/\D/g, '').slice(0, 4);
+      this.value = this.value.replace(/\D/g, '').slice(0, 3);
     });
   }
 
