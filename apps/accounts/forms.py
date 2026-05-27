@@ -196,15 +196,17 @@ def _email_en_uso(email, excluir_pk=None):
 
 class UsuarioPerfilForm(forms.ModelForm):
     """
-    Edición de la propia cuenta: solo el email es modificable.
-    El resto de los datos personales (nombre, apellido, DNI, fecha de
-    nacimiento) se muestran como información de solo lectura en el template.
+    Edición de la propia cuenta: el usuario puede modificar nombre, apellido
+    y email. El DNI y la fecha de nacimiento son fijos y se muestran como
+    información de solo lectura en el template.
     """
 
     class Meta:
         model = Usuario
-        fields = ("email",)
+        fields = ("nombre", "apellido", "email")
         widgets = {
+            "nombre": forms.TextInput(attrs={"class": INPUT_CLASS}),
+            "apellido": forms.TextInput(attrs={"class": INPUT_CLASS}),
             "email": forms.EmailInput(
                 attrs={"class": INPUT_CLASS, "autocomplete": "email"}
             ),
