@@ -12,7 +12,7 @@
             </h1>
             <p class="text-gray-500{% if is_panel %} dark:text-gray-400{% endif %} text-sm">
                 {% if es_propio_perfil %}
-                Actualizá tus datos personales. El DNI no puede modificarse.
+                Tus datos personales no son modificables. Solo podés actualizar tu email.
                 {% else %}
                 {{ usuario.get_full_name }}
                 {% endif %}
@@ -51,9 +51,23 @@
             {% endif %}
 
             {% if es_propio_perfil %}
-            <div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Número de documento</p>
-                <p class="text-sm font-semibold text-gray-900">{{ usuario.nro_documento }}</p>
+            <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Nombre</p>
+                    <p class="text-sm font-semibold text-gray-900">{{ usuario.nombre }}</p>
+                </div>
+                <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Apellido</p>
+                    <p class="text-sm font-semibold text-gray-900">{{ usuario.apellido }}</p>
+                </div>
+                <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Número de documento</p>
+                    <p class="text-sm font-semibold text-gray-900">{{ usuario.nro_documento }}</p>
+                </div>
+                <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Fecha de nacimiento</p>
+                    <p class="text-sm font-semibold text-gray-900">{{ usuario.fecha_nacimiento|date:"d/m/Y" }}</p>
+                </div>
             </div>
 
             {% if creditos_resumen %}

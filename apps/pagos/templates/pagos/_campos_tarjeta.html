@@ -2,7 +2,28 @@
   <label for="{{ form.numero_tarjeta.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-900">
     {{ form.numero_tarjeta.label }}
   </label>
-  {{ form.numero_tarjeta }}
+  <div class="relative">
+    {{ form.numero_tarjeta }}
+    {# Detector de marca: se muestra dinámicamente según los primeros dígitos. #}
+    <div id="marca-tarjeta" class="absolute inset-y-0 right-3 hidden items-center pointer-events-none">
+      <svg id="svg-visa" class="hidden" width="40" height="25" viewBox="0 0 40 25" xmlns="http://www.w3.org/2000/svg" aria-label="Visa">
+        <rect width="40" height="25" rx="3" fill="#1A1F71"/>
+        <text x="20" y="17" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="white" text-anchor="middle">VISA</text>
+      </svg>
+      <svg id="svg-mastercard" class="hidden" width="40" height="25" viewBox="0 0 40 25" xmlns="http://www.w3.org/2000/svg" aria-label="Mastercard">
+        <circle cx="15" cy="12.5" r="8" fill="#EB001B"/>
+        <circle cx="25" cy="12.5" r="8" fill="#F79E1B" fill-opacity="0.85"/>
+      </svg>
+      <svg id="svg-cabal" class="hidden" width="40" height="25" viewBox="0 0 40 25" xmlns="http://www.w3.org/2000/svg" aria-label="Cabal">
+        <rect width="40" height="25" rx="3" fill="#003D7A"/>
+        <text x="20" y="17" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white" text-anchor="middle">CABAL</text>
+      </svg>
+      <svg id="svg-naranja" class="hidden" width="40" height="25" viewBox="0 0 40 25" xmlns="http://www.w3.org/2000/svg" aria-label="Naranja">
+        <rect width="40" height="25" rx="3" fill="#FF5F00"/>
+        <text x="20" y="17" font-family="Arial, sans-serif" font-size="9" font-weight="bold" fill="white" text-anchor="middle">NARANJA</text>
+      </svg>
+    </div>
+  </div>
   {% if form.numero_tarjeta.errors %}
     <p class="mt-1 text-sm text-red-600">{{ form.numero_tarjeta.errors.0 }}</p>
   {% endif %}

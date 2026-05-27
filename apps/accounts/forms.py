@@ -196,21 +196,17 @@ def _email_en_uso(email, excluir_pk=None):
 
 class UsuarioPerfilForm(forms.ModelForm):
     """
-    Edición de la propia cuenta: el DNI no es modificable.
+    Edición de la propia cuenta: solo el email es modificable.
+    El resto de los datos personales (nombre, apellido, DNI, fecha de
+    nacimiento) se muestran como información de solo lectura en el template.
     """
 
     class Meta:
         model = Usuario
-        fields = ("nombre", "apellido", "email", "fecha_nacimiento")
+        fields = ("email",)
         widgets = {
-            "nombre": forms.TextInput(attrs={"class": INPUT_CLASS}),
-            "apellido": forms.TextInput(attrs={"class": INPUT_CLASS}),
             "email": forms.EmailInput(
                 attrs={"class": INPUT_CLASS, "autocomplete": "email"}
-            ),
-            "fecha_nacimiento": forms.DateInput(
-                format="%Y-%m-%d",
-                attrs={"type": "date", "class": INPUT_CLASS}
             ),
         }
 
@@ -219,20 +215,6 @@ class UsuarioPerfilForm(forms.ModelForm):
         if email and _email_en_uso(email, excluir_pk=self.instance.pk):
             raise ValidationError(_("Este correo ya se encuentra en uso."))
         return email
-
-    def clean_fecha_nacimiento(self):
-        fecha = self.cleaned_data.get("fecha_nacimiento")
-        if fecha:
-            validar_mayor_de_edad(fecha)
-        return fecha
-
-    def save(self, commit=True):
-        usuario = super().save(commit=False)
-        if self.instance.pk:
-            usuario.nro_documento = self.instance.nro_documento
-        if commit:
-            usuario.save()
-        return usuario
 
 
 class UsuarioModificacionForm(forms.ModelForm):
