@@ -304,3 +304,81 @@ class TarjetaPagoForm(forms.Form):
             return pan, cvv, False
         pan = normalizar_numero_tarjeta(self.cleaned_data["numero_tarjeta"])
         return pan, cvv, True
+
+
+# ── EMPLOYEE: Forms para Registrar Pago en Efectivo ────────────────────────────
+
+class EmpleadoBusquedaReservaForm(forms.Form):
+    """
+    Formulario para empleado buscar una reserva pendiente de pago.
+    
+    Búsqueda libre por: nombre, apellido, documento o email del cliente.
+    """
+    
+    criterio_busqueda = forms.CharField(
+        label=_("Buscar cliente por nombre, documento o email"),
+        max_length=100,
+        widget=forms.TextInput(
+            attrs={
+                "class": "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
+                         "focus:ring-green-500 focus:border-green-500 block w-full p-2.5",
+                "placeholder": _("Ej: Juan Pérez, 12345678, juan@email.com"),
+                "autofocus": True,
+            }
+        ),
+    )
+    
+    def clean_criterio_busqueda(self):
+        criterio = (self.cleaned_data.get("criterio_busqueda") or "").strip()
+        if not criterio:
+            raise forms.ValidationError(
+                _("Ingresá un criterio de búsqueda (nombre, documento o email).")
+            )
+        if len(criterio) < 2:
+            raise forms.ValidationError(
+                _("El criterio debe tener al menos 2 caracteres.")
+            )
+        return criterio
+
+
+class EmpleadoConfirmacionPagoForm(forms.Form):
+    """
+    Formulario de confirmación antes de registrar pago en efectivo.
+    
+    Permite empleado confirmar el monto recibido y validar que sea correcto.
+    """
+    
+    monto_recibido = forms.DecimalField(
+        label=_("Monto recibido en efectivo ($)"),
+        max_digits=10,
+        decimal_places=2,
+        min_value=0,
+        widget=forms.NumberInput(
+            attrs={
+                "class": "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg "
+                         "focus:ring-green-500 focus:border-green-500 block w-full p-2.5",
+                "readonly": True,  # Pre-llenado, no editable
+                "step": "0.01",
+            }
+        ),
+        help_text=_("Este monto está pre-llenado con el saldo adeudado. Si el cliente pagó más, confirma el monto recibido."),
+    )
+    
+    confirmar_recepcion = forms.BooleanField(
+        label=_("✓ Confirmo que recibí el monto indicado en efectivo"),
+        required=True,
+        widget=forms.CheckboxInput(
+            attrs={
+                "class": "w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded "
+                         "focus:ring-2 focus:ring-green-500",
+            }
+        ),
+    )
+    
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("confirmar_recepcion"):
+            raise forms.ValidationError(
+                _("Debes confirmar que recibiste el monto en efectivo.")
+            )
+        return cleaned

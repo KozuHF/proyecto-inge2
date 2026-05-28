@@ -1,0 +1,224 @@
+{% extends "accounts/panel_base.html" %}
+{% load i18n %}
+
+{% block title %}Registrar Pago Efectivo — Club360{% endblock title %}
+
+{% block panel_content %}
+<div class="max-w-4xl">
+    <div class="mb-8">
+        <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">
+            {% trans "Registrar Pago en Efectivo" %}
+        </h1>
+        <p class="text-gray-500 dark:text-gray-400">
+            {% trans "Confirmá los datos y el monto antes de registrar el pago." %}
+        </p>
+    </div>
+
+    {% include "accounts/_messages.html" %}
+
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+
+        <!-- Resumen Cliente -->
+        <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                {% trans "Cliente" %}
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Nombre" %}
+                    </p>
+                    <p class="text-lg font-bold text-gray-900 dark:text-white">
+                        {{ cliente.get_full_name }}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Documento" %}
+                    </p>
+                    <p class="text-lg font-bold text-gray-900 dark:text-white font-mono">
+                        {{ cliente.nro_documento }}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Email" %}
+                    </p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        {{ cliente.email }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resumen Turno -->
+        <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                {% trans "Turno Reservado" %}
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Actividad" %}
+                    </p>
+                    <p class="text-lg font-bold text-gray-900 dark:text-white">
+                        {{ actividad.nombre }}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Fecha" %}
+                    </p>
+                    <p class="text-lg font-bold text-gray-900 dark:text-white">
+                        {{ turno.fecha|date:"d/m/Y" }}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Hora" %}
+                    </p>
+                    <p class="text-lg font-bold text-gray-900 dark:text-white">
+                        {{ turno.hora|stringformat:"02d" }}:00 hs
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detalles de Pago (IMPORTANTE) -->
+        <div class="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-2xl p-6 shadow-sm dark:from-green-900/20 dark:to-green-800/20 dark:border-green-700">
+            <h2 class="text-lg font-bold text-green-900 dark:text-green-200 mb-4">
+                💰 {% trans "Detalles de Pago" %}
+            </h2>
+            <div class="space-y-3">
+                <!-- Monto Total -->
+                <div class="flex justify-between items-center pb-3 border-b border-green-300 dark:border-green-700">
+                    <span class="text-gray-700 dark:text-gray-300">{% trans "Monto Total del Turno:" %}</span>
+                    <span class="text-xl font-bold text-gray-900 dark:text-white">
+                        ${{ monto_total }}
+                    </span>
+                </div>
+
+                <!-- Seña Pagada (si aplica) -->
+                {% if reserva.estado_pago == 'senado' %}
+                <div class="flex justify-between items-center pb-3 border-b border-green-300 dark:border-green-700">
+                    <span class="text-gray-700 dark:text-gray-300">{% trans "Seña Pagada (50%):" %}</span>
+                    <span class="text-lg font-semibold text-green-700 dark:text-green-300">
+                        ${{ monto_sena }}
+                    </span>
+                </div>
+
+                <!-- SALDO RESTANTE (resaltado) -->
+                <div class="flex justify-between items-center pt-2">
+                    <span class="text-lg font-bold text-green-900 dark:text-green-200">
+                        {% trans "SALDO RESTANTE A PAGAR:" %}
+                    </span>
+                    <span class="text-3xl font-bold text-green-700 dark:text-green-300 bg-white dark:bg-gray-700 px-4 py-2 rounded-lg">
+                        ${{ monto_saldo }}
+                    </span>
+                </div>
+                {% else %}
+                <!-- MONTO A PAGAR (PENDIENTE) -->
+                <div class="flex justify-between items-center pt-2">
+                    <span class="text-lg font-bold text-green-900 dark:text-green-200">
+                        {% trans "MONTO A PAGAR:" %}
+                    </span>
+                    <span class="text-3xl font-bold text-green-700 dark:text-green-300 bg-white dark:bg-gray-700 px-4 py-2 rounded-lg">
+                        ${{ monto_total }}
+                    </span>
+                </div>
+                {% endif %}
+
+                <!-- Método de Pago -->
+                <div class="mt-4 pt-3 border-t border-green-300 dark:border-green-700">
+                    <p class="text-sm text-gray-700 dark:text-gray-300">
+                        <strong>{% trans "Método:" %}</strong> 💵 {% trans "Efectivo en sede" %}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulario de Confirmación -->
+        <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                {% trans "Confirmar Recepción de Efectivo" %}
+            </h2>
+
+            <!-- Monto Recibido (pre-llenado) -->
+            <div class="mb-4">
+                <label for="{{ form.monto_recibido.id_for_label }}" class="block text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                    {{ form.monto_recibido.label }}
+                </label>
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl font-bold text-gray-900 dark:text-white">$</span>
+                    {{ form.monto_recibido }}
+                </div>
+                {% if form.monto_recibido.help_text %}
+                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    {{ form.monto_recibido.help_text|safe }}
+                </p>
+                {% endif %}
+                {% if form.monto_recibido.errors %}
+                <div class="text-red-600 dark:text-red-400 text-sm mt-1">
+                    {% for error in form.monto_recibido.errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Checkbox Confirmación -->
+            <div class="mb-4">
+                <div class="flex items-start gap-3">
+                    {% if form.confirmar_recepcion.errors %}
+                        <div class="flex-1 text-red-600 dark:text-red-400">
+                    {% else %}
+                        <div class="flex-1">
+                    {% endif %}
+                        <label for="{{ form.confirmar_recepcion.id_for_label }}" class="flex items-center gap-2 cursor-pointer">
+                            {{ form.confirmar_recepcion }}
+                            <span class="text-sm font-semibold text-gray-900 dark:text-white">
+                                {{ form.confirmar_recepcion.label }}
+                            </span>
+                        </label>
+                        {% if form.confirmar_recepcion.errors %}
+                        <p class="text-sm mt-1">
+                            {% for error in form.confirmar_recepcion.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advertencia -->
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 dark:bg-red-900/20 dark:border-red-800">
+                <div class="flex gap-3">
+                    <svg class="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    <div>
+                        <p class="text-sm font-bold text-red-800 dark:text-red-300">
+                            ⚠ {% trans "Acción Irreversible" %}
+                        </p>
+                        <p class="text-sm text-red-700 dark:text-red-400 mt-1">
+                            {% trans "Una vez registrado, el pago no puede ser modificado. La reserva pasará de estado SEÑADO a PAGADO." %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div class="flex gap-3 justify-end">
+                <a href="{% url 'buscar_reserva_pago' %}" class="px-6 py-2.5 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">
+                    {% trans "Cancelar" %}
+                </a>
+                <button type="submit" class="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition dark:bg-green-700 dark:hover:bg-green-600 disabled:opacity-50">
+                    {% trans "✓ Confirmar Pago" %}
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock panel_content %}

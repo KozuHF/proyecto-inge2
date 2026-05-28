@@ -1,0 +1,160 @@
+{% extends "accounts/panel_base.html" %}
+{% load i18n %}
+
+{% block title %}Buscar Reserva para Pago — Club360{% endblock title %}
+
+{% block panel_content %}
+<div class="max-w-4xl">
+    <div class="mb-8">
+        <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">
+            {% trans "Registrar Pago en Sede" %}
+        </h1>
+        <p class="text-gray-500 dark:text-gray-400">
+            {% trans "Buscá el cliente por nombre, documento o email para registrar su pago en efectivo." %}
+        </p>
+    </div>
+
+    {% include "accounts/_messages.html" %}
+
+    <!-- Formulario de Búsqueda -->
+    <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-8 dark:bg-gray-800 dark:border-gray-700">
+        <form method="post" class="flex gap-3">
+            {% csrf_token %}
+            <div class="flex-1">
+                {% if form.criterio_busqueda.errors %}
+                    <div class="mb-2">
+                        {% for error in form.criterio_busqueda.errors %}
+                            <p class="text-red-600 text-sm dark:text-red-400">{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                {{ form.criterio_busqueda }}
+            </div>
+            <button type="submit" class="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition dark:bg-green-700 dark:hover:bg-green-600 whitespace-nowrap">
+                {% trans "Buscar" %}
+            </button>
+        </form>
+    </div>
+
+    <!-- Resultados de Búsqueda -->
+    {% if resultados %}
+    <div class="space-y-4">
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+            {% blocktrans count counter=resultados|length %}
+                Se encontró {{ counter }} reserva pendiente
+            {% plural %}
+                Se encontraron {{ counter }} reservas pendientes
+            {% endblocktrans %}
+        </h2>
+
+        {% for reserva in resultados %}
+        <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition dark:bg-gray-800 dark:border-gray-700">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+                <!-- Cliente -->
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Cliente" %}
+                    </p>
+                    <p class="text-lg font-bold text-gray-900 dark:text-white">
+                        {{ reserva.usuario.get_full_name }}
+                    </p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        {% trans "DNI" %}: <span class="font-mono">{{ reserva.usuario.nro_documento }}</span>
+                    </p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        {{ reserva.usuario.email }}
+                    </p>
+                </div>
+
+                <!-- Actividad y Turno -->
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Turno" %}
+                    </p>
+                    <p class="text-lg font-bold text-gray-900 dark:text-white">
+                        {{ reserva.turno.actividad.nombre }}
+                    </p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        📅 {{ reserva.turno.fecha|date:"d/m/Y" }} - 🕐 {{ reserva.turno.hora|stringformat:"02d" }}:00
+                    </p>
+                    <p class="text-xs text-gray-500 mt-2 dark:text-gray-400">
+                        {% if reserva.estado_pago == 'senado' %}
+                            <span class="inline-block px-2 py-1 bg-yellow-100 text-yellow-800 rounded dark:bg-yellow-900/30 dark:text-yellow-300">
+                                {% trans "Seña pagada" %}
+                            </span>
+                        {% elif reserva.estado_pago == 'pendiente' %}
+                            <span class="inline-block px-2 py-1 bg-orange-100 text-orange-800 rounded dark:bg-orange-900/30 dark:text-orange-300">
+                                {% trans "Pendiente" %}
+                            </span>
+                        {% endif %}
+                    </p>
+                </div>
+
+                <!-- Montos -->
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                        {% trans "Montos" %}
+                    </p>
+                    <div class="space-y-2 mt-2">
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600 dark:text-gray-300">{% trans "Total:" %}</span>
+                            <span class="text-sm font-bold text-gray-900 dark:text-white">${{ reserva.monto_total }}</span>
+                        </div>
+                        {% if reserva.estado_pago == 'senado' %}
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600 dark:text-gray-300">{% trans "Seña:" %}</span>
+                            <span class="text-sm font-bold text-green-600 dark:text-green-400">${{ reserva.precio_abonado }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm font-bold text-gray-900 dark:text-white">{% trans "SALDO:" %}</span>
+                            <span class="text-lg font-bold text-green-600 dark:text-green-400">${{ reserva.monto_saldo }}</span>
+                        </div>
+                        {% else %}
+                        <div class="flex justify-between">
+                            <span class="text-sm font-bold text-gray-900 dark:text-white">{% trans "A PAGAR:" %}</span>
+                            <span class="text-lg font-bold text-green-600 dark:text-green-400">${{ reserva.monto_total }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botón Registrar Pago -->
+            <div class="flex gap-2 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+                <a href="{% url 'registrar_pago_efectivo' reserva.id %}" class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition dark:bg-green-700 dark:hover:bg-green-600">
+                    {% trans "Registrar Pago →" %}
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% elif request.method == 'POST' %}
+    <!-- Sin resultados -->
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-8 text-center dark:bg-blue-900/20 dark:border-blue-800">
+        <svg class="w-12 h-12 text-blue-600 mx-auto mb-4 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <h3 class="text-lg font-bold text-blue-900 dark:text-blue-300 mb-2">
+            {% trans "Sin resultados" %}
+        </h3>
+        <p class="text-blue-800 dark:text-blue-400">
+            {% trans "No se encontraron reservas pendientes de pago con ese criterio. Intentá con otro nombre, documento o email." %}
+        </p>
+    </div>
+    {% else %}
+    <!-- Estado inicial -->
+    <div class="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center dark:bg-gray-800 dark:border-gray-700">
+        <svg class="w-12 h-12 text-gray-400 mx-auto mb-4 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">
+            {% trans "Iniciá la búsqueda" %}
+        </h3>
+        <p class="text-gray-600 dark:text-gray-400">
+            {% trans "Ingresá el nombre, documento o email del cliente para buscar sus reservas pendientes de pago." %}
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endblock panel_content %}
