@@ -333,8 +333,8 @@ def _validar_tarjeta(
 
     if not tarjetas.es_pan_demo(pan):
         return _rechazar(
-            _("Tarjeta no habilitada en modo demostración."),
-            _("Tarjeta no válida para esta demostración."),
+            _("Número de tarjeta inválido."),
+            _("Número de tarjeta inválido."),
         )
 
     if not tarjetas.pan_tiene_fondos(pan):
