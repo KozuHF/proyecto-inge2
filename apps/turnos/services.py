@@ -53,6 +53,63 @@ def _obtener_o_crear_turno(actividad: Actividad, fecha: date, hora: int) -> Turn
     return turno
 
 
+def generar_turnos_desde_horario(horario, meses: int = 6) -> tuple[int, int]:
+    """
+    Genera los objetos Turno para los próximos `meses` meses a partir de hoy,
+    según el HorarioDisponible recibido.
+
+    Salta fechas pasadas, feriados inamovibles y domingos.
+    No toca turnos que ya existen (usa get_or_create).
+
+    Devuelve (creados, omitidos) donde:
+      - creados  = turnos nuevos insertados en BD
+      - omitidos = fechas que ya tenían turno o eran inválidas
+    """
+    from .models import FERIADOS_INAMOVIBLES, DIAS_HABILES
+
+    hoy = timezone.now().date()
+    # Calcular fecha límite: hoy + 6 meses completos
+    mes_fin = hoy.month + meses
+    anio_fin = hoy.year + (mes_fin - 1) // 12
+    mes_fin = (mes_fin - 1) % 12 + 1
+    _, ultimo = calendar.monthrange(anio_fin, mes_fin)
+    fecha_fin = date(anio_fin, mes_fin, ultimo)
+
+    cupos = horario.cupos_efectivos()
+    creados = 0
+    omitidos = 0
+
+    # Iterar semana a semana desde la primera ocurrencia del día elegido
+    # a partir de hoy hasta fecha_fin.
+    dias_hasta = (horario.dia_semana - hoy.weekday()) % 7
+    primera = hoy + __import__("datetime").timedelta(days=dias_hasta)
+
+    fecha_actual = primera
+    delta = __import__("datetime").timedelta(weeks=1)
+
+    while fecha_actual <= fecha_fin:
+        # Saltar feriados inamovibles
+        if (fecha_actual.month, fecha_actual.day) in FERIADOS_INAMOVIBLES:
+            omitidos += 1
+            fecha_actual += delta
+            continue
+
+        _, created = Turno.objects.get_or_create(
+            actividad=horario.actividad,
+            fecha=fecha_actual,
+            hora=horario.hora,
+            defaults={"cupos": cupos},
+        )
+        if created:
+            creados += 1
+        else:
+            omitidos += 1
+
+        fecha_actual += delta
+
+    return creados, omitidos
+
+
 def _crear_reserva_para_turno(usuario, turno: Turno, tipo: str, grupo=None) -> Reserva:
     ya_existe = Reserva.objects.filter(
         usuario=usuario,
@@ -77,20 +134,37 @@ def _crear_reserva_para_turno(usuario, turno: Turno, tipo: str, grupo=None) -> R
 
 # ── Fechas candidatas para «varios turnos» ────────────────────────────────────
 
-def obtener_fechas_candidatas_varios(fecha_referencia: date, hora: int) -> list[date]:
+def obtener_fechas_candidatas_varios(fecha_referencia: date, hora: int, actividad=None) -> list[date]:
     """
     Devuelve las fechas del mes de `fecha_referencia` con el mismo día de la semana,
-    en el horario dado, excluyendo fechas pasadas (anteriores a hoy) y días no hábiles (domingos/feriados).
-    El usuario elige cuáles reservar en el paso siguiente.
+    en el horario dado, excluyendo fechas pasadas y días no hábiles.
+
+    Si se provee `actividad`, verifica además que exista un HorarioDisponible
+    activo para esa actividad/día/hora antes de devolver las fechas.
     """
+    from .models import HorarioDisponible
+
     _validar_dia_habil(fecha_referencia)
     _validar_hora(hora)
+
+    # Verificar que el horario esté habilitado por el admin
+    if actividad is not None:
+        horario_existe = HorarioDisponible.objects.filter(
+            actividad=actividad,
+            dia_semana=fecha_referencia.weekday(),
+            hora=hora,
+            activo=True,
+        ).exists()
+        if not horario_existe:
+            raise ValidationError(
+                _("El horario seleccionado no está disponible para esta actividad.")
+            )
 
     hoy = timezone.now().date()
     anio = fecha_referencia.year
     mes = fecha_referencia.month
     fechas = _fechas_del_dia_en_mes(fecha_referencia.weekday(), anio, mes)
-    
+
     valid_fechas = []
     for f in fechas:
         if f >= hoy:
@@ -114,8 +188,9 @@ def _validar_fechas_seleccionadas(
     fechas_seleccionadas: list[date],
     fecha_referencia: date,
     hora: int,
+    actividad=None,
 ) -> list[date]:
-    candidatas = set(obtener_fechas_candidatas_varios(fecha_referencia, hora))
+    candidatas = set(obtener_fechas_candidatas_varios(fecha_referencia, hora, actividad=actividad))
     invalidas = [f for f in fechas_seleccionadas if f not in candidatas]
     if invalidas:
         raise ValidationError(_("Hay fechas seleccionadas que no son válidas."))
@@ -149,7 +224,7 @@ def calcular_monto_reserva_nueva(
     if modo == MODO_VARIOS_TURNOS:
         if not fechas_seleccionadas:
             raise ValidationError(_("Seleccioná al menos un día para reservar."))
-        fechas = _validar_fechas_seleccionadas(fechas_seleccionadas, fecha, hora)
+        fechas = _validar_fechas_seleccionadas(fechas_seleccionadas, fecha, hora, actividad=actividad)
         total, _, _ = monto_total_desde_fechas(
             actividad, fechas, usuario=usuario, anio=fecha.year, mes=fecha.month
         )
@@ -181,7 +256,7 @@ def reservar_varios_turnos(
     """
     Crea reservas solo para las fechas que el usuario eligió.
     """
-    fechas = _validar_fechas_seleccionadas(fechas_seleccionadas, fecha_referencia, hora)
+    fechas = _validar_fechas_seleccionadas(fechas_seleccionadas, fecha_referencia, hora, actividad=actividad)
     _, regla_cobro, descuento = monto_total_desde_fechas(
         actividad,
         fechas,
@@ -316,30 +391,49 @@ def cancelar_reservas_futuras_de_usuario(usuario) -> int:
 
 # ── Consultas de apoyo para las vistas ───────────────────────────────────────
 
-def obtener_horas_disponibles(actividad: Actividad, fecha: date) -> list[dict]:
-    from .models import HORAS_VALIDAS
+def obtener_horas_disponibles(actividad, fecha) -> list[dict]:
+    """
+    Devuelve los bloques horarios disponibles para reservar en una fecha dada.
 
+    Solo se incluyen horas que el admin habilitó mediante un HorarioDisponible
+    activo para esa actividad y ese día de la semana.  Si el turno físico ya
+    existe en BD se usa su información; si no existe aún se crea al momento de
+    confirmar la reserva (en _obtener_o_crear_turno).
+    """
+    from .models import HorarioDisponible
+
+    dia_semana = fecha.weekday()
+
+    # Horarios que el admin definió para este día de la semana
+    horarios = (
+        HorarioDisponible.objects
+        .filter(actividad=actividad, dia_semana=dia_semana, activo=True)
+        .order_by("hora")
+    )
+
+    # Turnos físicos que ya existen para esta fecha
     turnos_existentes = {
         t.hora: t
         for t in Turno.objects.filter(actividad=actividad, fecha=fecha)
     }
 
     resultado = []
-    for hora in HORAS_VALIDAS:
+    for horario in horarios:
+        hora = horario.hora
         turno = turnos_existentes.get(hora)
         if turno:
-            libres = turno.cupos_libres
-            lleno = turno.esta_lleno
+            libres    = turno.cupos_libres
+            lleno     = turno.esta_lleno
             en_espera = turno.lista_espera.count()
         else:
-            libres = actividad.cupos
-            lleno = False
+            libres    = horario.cupos_efectivos()
+            lleno     = False
             en_espera = 0
 
         resultado.append({
-            "hora": hora,
-            "libres": libres,
-            "lleno": lleno,
+            "hora":      hora,
+            "libres":    libres,
+            "lleno":     lleno,
             "en_espera": en_espera,
         })
     return resultado

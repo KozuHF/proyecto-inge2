@@ -156,16 +156,16 @@ class TurnosPanelTestCase(TestCase):
         """Admin can modify a turn via the edit view, validating the form fields."""
         self.client.force_login(self.admin)
         url = reverse('editar_turno', kwargs={'pk': self.turno.pk})
-        
+
         post_data = {
             'actividad': self.actividad.pk,
-            'fecha': '2026-05-26', # Attempts to change, but is disabled
-            'hora': 12,            # valid
-            'cupos': 5             # valid
+            'fecha': '2026-05-26',  # Attempts to change, but is disabled
+            'hora': 12,  # valid
+            'cupos': 5  # valid
         }
         response = self.client.post(url, post_data)
         self.assertRedirects(response, reverse('panel_turnos'))
-        
+
         self.turno.refresh_from_db()
         # Fecha and Actividad should remain unchanged because they are disabled fields in the form
         self.assertEqual(self.turno.fecha, date(2026, 5, 18))
@@ -183,12 +183,13 @@ class TurnosPanelTestCase(TestCase):
         )
 
         self.client.force_login(self.admin)
-        
+
         # Verify the GET request warns about 1 reservation
         url = reverse('eliminar_turno', kwargs={'pk': self.turno.pk})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "La eliminación de turnos puede cancelar de forma permanente las reservas asociadas a los mismos.")
+        self.assertContains(response,
+                            "La eliminación de turnos puede cancelar de forma permanente las reservas asociadas a los mismos.")
 
         # Perform the POST request to delete the shift
         response = self.client.post(url)
@@ -220,15 +221,15 @@ class TurnosPanelTestCase(TestCase):
         self.client.force_login(self.admin)
         url = reverse('panel_turnos')
         # 2026-05-18 is a Monday (has our shift and virtual slots)
-        
+
         num_actividades = Actividad.objects.count()
         total_slots = num_actividades * 14
-        
+
         # When filtering by 'todos'
         response_all = self.client.get(url, {'fecha': '2026-05-18', 'estado_ocupacion': 'todos'})
         self.assertEqual(response_all.status_code, 200)
         self.assertEqual(len(response_all.context['turnos']), total_slots)
-        
+
         # When filtering by 'vacios'
         response_vacios = self.client.get(url, {'fecha': '2026-05-18', 'estado_ocupacion': 'vacios'})
         self.assertEqual(response_vacios.status_code, 200)
@@ -252,7 +253,7 @@ class TurnosPanelTestCase(TestCase):
         """Attempting to create a Turno on a holiday raises a ValidationError."""
         turno_holiday = Turno(
             actividad=self.actividad,
-            fecha=date(2026, 5, 25), # Holiday
+            fecha=date(2026, 5, 25),  # Holiday
             hora=12,
             cupos=5
         )
@@ -264,11 +265,11 @@ class TurnosPanelTestCase(TestCase):
         """Admin can modify a turn and propagate changes (cupos, pricing) to future occurrences."""
         self.client.force_login(self.admin)
         url = reverse('editar_turno', kwargs={'pk': self.turno.pk})
-        
+
         # Modify cupos to 3, precio_override to 6500, and tick modifying future occurrences
         post_data = {
             'actividad': self.actividad.pk,
-            'fecha': '2026-05-18', # Monday
+            'fecha': '2026-05-18',  # Monday
             'hora': 10,
             'cupos': 3,
             'precio_override': Decimal("6500.00"),
@@ -276,11 +277,11 @@ class TurnosPanelTestCase(TestCase):
         }
         response = self.client.post(url, post_data)
         self.assertRedirects(response, reverse('panel_turnos'))
-        
+
         self.turno.refresh_from_db()
         self.assertEqual(self.turno.cupos, 3)
         self.assertEqual(self.turno.precio_override, Decimal("6500.00"))
-        
+
         # Check that weekly future turnos (on Mondays at 10:00) have been created/updated
         # Next Monday is 2026-05-25 (holiday, closed, so skipped)
         # Next-next Monday is 2026-06-01
@@ -303,12 +304,12 @@ class TurnosPanelTestCase(TestCase):
         # Create a shift with override price
         override_turno = Turno.objects.create(
             actividad=self.actividad,
-            fecha=date(2026, 5, 19), # Tuesday
+            fecha=date(2026, 5, 19),  # Tuesday
             hora=10,
             cupos=5,
             precio_override=Decimal("7500.00")
         )
-        
+
         # Create a single reservation for this shift
         reserva = Reserva.objects.create(
             usuario=self.client_user,
@@ -317,8 +318,8 @@ class TurnosPanelTestCase(TestCase):
             tipo_reserva=Reserva.TipoReserva.INDIVIDUAL
         )
         self.assertEqual(reserva.monto_total, Decimal("7500.00"))
-        self.assertEqual(reserva.monto_sena, Decimal("3750.00")) # 50%
-        
+        self.assertEqual(reserva.monto_sena, Decimal("3750.00"))  # 50%
+
         # Calculate abono amount containing this shift
         from apps.turnos.abono_mensual import monto_total_desde_fechas
         total, regla, desc = monto_total_desde_fechas(
@@ -350,9 +351,9 @@ class TurnosPanelTestCase(TestCase):
             turno=future_turno,
             estado=Reserva.Estado.CONFIRMADA
         )
-        
+
         self.client.force_login(self.admin)
-        
+
         # Perform POST to delete this and all future weekly occurrences
         url = reverse('eliminar_turno', kwargs={'pk': self.turno.pk})
         post_data = {
@@ -360,7 +361,7 @@ class TurnosPanelTestCase(TestCase):
         }
         response = self.client.post(url, post_data)
         self.assertRedirects(response, reverse('panel_turnos'))
-        
+
         # Verify both current and future turnos are deleted, and their reservations are gone
         self.assertFalse(Turno.objects.filter(pk=self.turno.pk).exists())
         self.assertFalse(Turno.objects.filter(pk=future_turno.pk).exists())
@@ -370,7 +371,7 @@ class TurnosPanelTestCase(TestCase):
     def test_paso_fecha_form_holiday(self):
         """PasoFechaForm should be invalid on a holiday."""
         from apps.turnos.forms import PasoFechaForm
-        form = PasoFechaForm(data={'fecha': '2026-05-25'}) # Monday May 25 is holiday (Revolución de Mayo)
+        form = PasoFechaForm(data={'fecha': '2026-05-25'})  # Monday May 25 is holiday (Revolución de Mayo)
         self.assertFalse(form.is_valid())
         self.assertIn('fecha', form.errors)
         self.assertIn('feriado nacional', form.errors['fecha'][0])
@@ -380,17 +381,26 @@ class TurnosPanelTestCase(TestCase):
         from django.utils import timezone
         from unittest.mock import patch
         from datetime import datetime
+        from apps.turnos.models import HorarioDisponible
+
+        # Crear un HorarioDisponible para lunes (weekday=0) a las 10 hs
+        HorarioDisponible.objects.get_or_create(
+            actividad=self.actividad,
+            dia_semana=0,  # lunes
+            hora=10,
+            defaults={"activo": True},
+        )
 
         # Mock timezone.now() to return May 1, 2026
         with patch('django.utils.timezone.now') as mock_now:
             mock_now.return_value = timezone.make_aware(datetime(2026, 5, 1, 10, 0, 0))
-            
+
             from apps.turnos.services import obtener_fechas_candidatas_varios
             # Reference date: Monday May 18, 2026
             ref_date = date(2026, 5, 18)
             # Call service to get candidate dates for May 2026
-            candidatas = obtener_fechas_candidatas_varios(ref_date, 10)
-            
+            candidatas = obtener_fechas_candidatas_varios(ref_date, 10, actividad=self.actividad)
+
             # May 2026 has Mondays on 4, 11, 18, 25.
             # Since May 25 is a holiday, it must be excluded.
             self.assertIn(date(2026, 5, 4), candidatas)
@@ -401,7 +411,7 @@ class TurnosPanelTestCase(TestCase):
     def test_contacto_view(self):
         """Verify contact page loading and email addresses display."""
         url = reverse('contacto')
-        
+
         # Test GET request
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)

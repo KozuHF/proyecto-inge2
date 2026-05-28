@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from .models import GrupoReservaMensual, Reserva, Turno
+from .models import GrupoReservaMensual, HorarioDisponible, Reserva, Turno
 
 
 class ReservaInline(admin.TabularInline):
@@ -52,3 +52,79 @@ class GrupoReservaMensualAdmin(admin.ModelAdmin):
     @admin.display(description=_("Reservas en grupo"))
     def cantidad_reservas(self, obj):
         return obj.reservas.count()
+
+
+@admin.register(HorarioDisponible)
+class HorarioDisponibleAdmin(admin.ModelAdmin):
+    """
+    Panel de administración para gestionar los horarios disponibles.
+
+    El admin elige:
+      - Actividad
+      - Día de la semana
+      - Hora de inicio (el turno dura siempre 1 hora)
+      - Cupos (opcional; si se omite, se hereda de la actividad)
+
+    El sistema valida automáticamente que no haya solapamiento:
+    solo puede existir un horario por actividad + día + hora.
+    """
+
+    list_display  = ("actividad", "dia_semana_display", "hora_display", "cupos_display", "activo")
+    list_filter   = ("actividad", "dia_semana", "activo")
+    search_fields = ("actividad__nombre",)
+    ordering      = ("dia_semana", "hora", "actividad")
+    list_editable = ("activo",)
+
+    fieldsets = (
+        (None, {
+            "fields": ("actividad", "dia_semana", "hora"),
+            "description": _(
+                "Definí el día y horario del turno. "
+                "Cada turno dura exactamente 1 hora. "
+                "No puede haber dos horarios de la misma actividad en el mismo día y hora."
+            ),
+        }),
+        (_("Configuración"), {
+            "fields": ("cupos", "activo"),
+        }),
+    )
+
+    @admin.display(description=_("Día"), ordering="dia_semana")
+    def dia_semana_display(self, obj):
+        from .models import DIAS_SEMANA_CHOICES
+        return dict(DIAS_SEMANA_CHOICES).get(obj.dia_semana, obj.dia_semana)
+
+    @admin.display(description=_("Horario"))
+    def hora_display(self, obj):
+        return f"{obj.hora:02d}:00 – {obj.hora + 1:02d}:00"
+
+    @admin.display(description=_("Cupos"))
+    def cupos_display(self, obj):
+        if obj.cupos is not None:
+            return obj.cupos
+        return _("%(cupos)s (actividad)") % {"cupos": obj.actividad.cupos}
+
+    def save_model(self, request, obj, form, change):
+        """
+        Llama a full_clean() para validar solapamiento y, si es un horario nuevo
+        o se acaba de reactivar, genera los Turno de los próximos 6 meses.
+        """
+        from . import services
+
+        estaba_inactivo = change and not obj.__class__.objects.filter(pk=obj.pk, activo=True).exists()
+        obj.full_clean()
+        super().save_model(request, obj, form, change)
+
+        es_nuevo = not change
+        se_reactivo = change and estaba_inactivo and obj.activo
+
+        if es_nuevo or se_reactivo:
+            creados, omitidos = services.generar_turnos_desde_horario(obj, meses=6)
+            accion = "creado" if es_nuevo else "reactivado"
+            self.message_user(
+                request,
+                _(
+                    "Horario %(accion)s. Se generaron %(creados)d turno(s) para los próximos 6 meses "
+                    "(%(omitidos)d fecha(s) omitida(s) por ser feriado o ya existir)."
+                ) % {"accion": accion, "creados": creados, "omitidos": omitidos},
+            )
