@@ -124,7 +124,7 @@ class TurnoForm(forms.ModelForm):
         widgets = {
             "actividad": forms.Select(attrs={"class": PANEL_INPUT_CLASS}),
             "fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": PANEL_INPUT_CLASS}),
-            "hora": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 8, "max": 21}),
+            "hora": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 6, "max": 22}),
             "cupos": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 1}),
             "precio_override": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 0, "step": "0.01"}),
         }
@@ -141,3 +141,56 @@ class TurnoForm(forms.ModelForm):
             self.fields["precio_override"].help_text = _(
                 "Dejar vacío para mantener el precio actual ($%(precio)s)."
             ) % {"precio": precio_base}
+
+
+from .models import HorarioDisponible, DIAS_SEMANA_CHOICES, HORAS_VALIDAS
+
+
+class HorarioDisponibleForm(forms.ModelForm):
+    """
+    Formulario para que el admin cree o edite un HorarioDisponible.
+
+    Selecciona la actividad, el día de la semana y la hora de inicio.
+    El sistema valida automáticamente que no haya solapamiento.
+    """
+
+    class Meta:
+        model = HorarioDisponible
+        fields = ["actividad", "dia_semana", "hora", "cupos", "activo"]
+        widgets = {
+            "actividad": forms.Select(attrs={"class": PANEL_INPUT_CLASS}),
+            "dia_semana": forms.Select(
+                choices=DIAS_SEMANA_CHOICES,
+                attrs={"class": PANEL_INPUT_CLASS},
+            ),
+            "hora": forms.Select(
+                choices=[(h, f"{h:02d}:00 – {h + 1:02d}:00") for h in HORAS_VALIDAS],
+                attrs={"class": PANEL_INPUT_CLASS},
+            ),
+            "cupos": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 1}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        actividad  = cleaned.get("actividad")
+        dia_semana = cleaned.get("dia_semana")
+        hora       = cleaned.get("hora")
+
+        if actividad and dia_semana is not None and hora is not None:
+            qs = HorarioDisponible.objects.filter(
+                actividad=actividad,
+                dia_semana=dia_semana,
+                hora=hora,
+            )
+            if self.instance and self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                dia_nombre = dict(DIAS_SEMANA_CHOICES).get(dia_semana, dia_semana)
+                raise forms.ValidationError(
+                    _(
+                        "Ya existe un horario para %(actividad)s los %(dia)s a las %(hora)02d:00. "
+                        "No puede haber dos horarios de la misma actividad en el mismo día y hora."
+                    )
+                    % {"actividad": actividad, "dia": dia_nombre, "hora": hora}
+                )
+        return cleaned

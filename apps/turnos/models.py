@@ -9,10 +9,10 @@ from apps.actividades.models import Actividad
 
 # ── Constantes de negocio ─────────────────────────────────────────────────────
 
-HORA_APERTURA  = 8   # 08:00
-HORA_CIERRE    = 22  # 22:00 → último turno inicia a las 21:00
+HORA_APERTURA  = 8
+HORA_CIERRE    = 22
 DIAS_HABILES   = [0, 1, 2, 3, 4, 5]  # Lunes=0 … Sábado=5 (domingo=6 cerrado)
-HORAS_VALIDAS  = list(range(HORA_APERTURA, HORA_CIERRE))  # [8, 9, …, 21]
+HORAS_VALIDAS  = list(range(HORA_APERTURA, HORA_CIERRE))
 
 FERIADOS_INAMOVIBLES = {
     (1, 1),    # Año Nuevo
@@ -21,7 +21,7 @@ FERIADOS_INAMOVIBLES = {
     (5, 1),    # Día del Trabajador
     (5, 25),   # Revolución de Mayo
     (6, 20),   # Belgrano
-    (7, 9),    # Independencia
+    (7, 9),    # Día de la Independencia
     (12, 8),   # Inmaculada Concepción
     (12, 25),  # Navidad
 }
@@ -29,6 +29,15 @@ FERIADOS_INAMOVIBLES = {
 # Modos del wizard de reserva (sesión)
 MODO_TURNO_UNICO = "unico"
 MODO_VARIOS_TURNOS = "varios"
+
+DIAS_SEMANA_CHOICES = [
+    (0, _("Lunes")),
+    (1, _("Martes")),
+    (2, _("Miércoles")),
+    (3, _("Jueves")),
+    (4, _("Viernes")),
+    (5, _("Sábado")),
+]
 
 
 def _validar_dia_habil(fecha: "datetime.date"):
@@ -50,6 +59,70 @@ def _validar_no_pasado(fecha):
     hoy = timezone.now().date()
     if fecha < hoy:
         raise ValidationError(_("No se puede reservar un turno en una fecha pasada."))
+
+
+# ── HorarioDisponible ────────────────────────────────────────────────────────
+
+class HorarioDisponible(models.Model):
+    """
+    Define un bloque horario recurrente para una actividad en un día de la semana.
+
+    El admin crea estos registros para indicar en qué días y horarios existe
+    un turno disponible para reservar. Cada instancia genera automáticamente
+    los objetos Turno correspondientes al mes que se está reservando.
+
+    Reglas de negocio:
+    - Un turno siempre dura exactamente 1 hora.
+    - No puede haber dos horarios de la misma actividad que se superpongan
+      en el mismo día de la semana (unicidad: actividad + dia_semana + hora).
+    - El horario debe estar dentro del rango [HORA_APERTURA, HORA_CIERRE).
+    """
+
+    actividad = models.ForeignKey(
+        Actividad,
+        on_delete=models.CASCADE,
+        related_name="horarios_disponibles",
+        verbose_name=_("Actividad"),
+    )
+    dia_semana = models.PositiveSmallIntegerField(
+        choices=DIAS_SEMANA_CHOICES,
+        verbose_name=_("Día de la semana"),
+    )
+    hora = models.PositiveSmallIntegerField(
+        verbose_name=_("Hora de inicio"),
+        help_text=_("Hora entera. El turno dura 1 hora."),
+    )
+    cupos = models.PositiveIntegerField(
+        verbose_name=_("Cupos"),
+        help_text=_("Cupos disponibles. Si se deja vacío se toma el valor de la actividad."),
+        null=True, blank=True,
+    )
+    activo = models.BooleanField(
+        default=True,
+        verbose_name=_("Activo"),
+        help_text=_("Desactivar impide que se generen nuevos turnos, pero no cancela los existentes."),
+    )
+
+    class Meta:
+        verbose_name        = _("Horario disponible")
+        verbose_name_plural = _("Horarios disponibles")
+        unique_together     = [("actividad", "dia_semana", "hora")]
+        ordering            = ["dia_semana", "hora", "actividad"]
+
+    def __str__(self):
+        dia = dict(DIAS_SEMANA_CHOICES).get(self.dia_semana, self.dia_semana)
+        return f"{self.actividad} – {dia} {self.hora:02d}:00"
+
+    def clean(self):
+        _validar_hora(self.hora)
+        if self.dia_semana not in dict(DIAS_SEMANA_CHOICES):
+            raise ValidationError(_("El día de la semana no es válido."))
+
+    def cupos_efectivos(self) -> int:
+        """Retorna los cupos definidos en el horario, o los de la actividad como fallback."""
+        if self.cupos is not None:
+            return self.cupos
+        return self.actividad.cupos
 
 
 # ── Turno ─────────────────────────────────────────────────────────────────────
@@ -105,6 +178,26 @@ class Turno(models.Model):
     def clean(self):
         _validar_dia_habil(self.fecha)
         _validar_hora(self.hora)
+        # Validar solapamiento: no puede haber otro turno de la misma actividad
+        # que ocupe el mismo bloque horario en la misma fecha.
+        # Dado que cada turno dura exactamente 1 hora, solapamiento ocurre solo
+        # cuando coinciden actividad + fecha + hora (ya cubierto por unique_together),
+        # pero también hay que verificar que no exista un HorarioDisponible duplicado
+        # que pudiera haberse colado. La unicidad real la garantiza unique_together;
+        # este bloque es para dar un mensaje de error legible desde el admin/forms.
+        conflicto_qs = Turno.objects.filter(
+            actividad=self.actividad,
+            fecha=self.fecha,
+            hora=self.hora,
+        )
+        if self.pk:
+            conflicto_qs = conflicto_qs.exclude(pk=self.pk)
+        if conflicto_qs.exists():
+            raise ValidationError(
+                _("Ya existe un turno de %(actividad)s el %(fecha)s a las %(hora)02d:00. "
+                  "Solo puede haber un turno por actividad en cada franja horaria.")
+                % {"actividad": self.actividad, "fecha": self.fecha, "hora": self.hora}
+            )
         if self.pk:
             ocupados = self.reservas_confirmadas.count()
             if self.cupos < ocupados:
