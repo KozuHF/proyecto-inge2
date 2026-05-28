@@ -638,3 +638,205 @@ def procesar_pago_grupo(
         reserva=reserva_ref,
         reservas_creadas=len(reservas),
     )
+
+
+# ── EMPLOYEE: Registrar Pago en Efectivo (en Sede) ─────────────────────────────
+
+def _validar_reserva_para_pago_efectivo(reserva: Reserva) -> None:
+    """
+    Valida que una reserva sea apta para registrar pago en efectivo.
+    
+    Validaciones:
+    - Reserva en estado CONFIRMADA o EN_ESPERA (no cancelada)
+    - Estado pago NO es PAGADO (no se puede pagar dos veces)
+    - Estado pago es PENDIENTE o SEÑADO (solo esos pueden pagarse)
+    - Turno NO vencido (fecha >= hoy)
+    - Turno existe y es accesible
+    
+    Lanza ValidationError si alguna validación falla.
+    """
+    from django.utils import timezone
+    
+    if reserva.estado == Reserva.Estado.CANCELADA:
+        raise ValidationError(
+            _("Esta reserva fue cancelada y no puede procesarse.")
+        )
+    
+    if reserva.estado_pago == Reserva.EstadoPago.PAGADO:
+        raise ValidationError(
+            _("Esta reserva ya está pagada. No se puede registrar otro pago.")
+        )
+    
+    if reserva.estado_pago not in (Reserva.EstadoPago.PENDIENTE, Reserva.EstadoPago.SENADO):
+        raise ValidationError(
+            _("Esta reserva no está en estado pagable (pendiente o señada).")
+        )
+    
+    if reserva.turno.fecha < timezone.now().date():
+        raise ValidationError(
+            _("Esta reserva corresponde a un turno vencido (fecha pasada). No se puede procesar el pago.")
+        )
+
+
+def buscar_reservas_por_cliente(criterio: str) -> list[Reserva]:
+    """
+    Busca reservas que están pendientes de pago para un cliente.
+    
+    Búsqueda por: nombre, apellido, documento o email del usuario.
+    Filtra solo reservas:
+    - Estado: CONFIRMADA o EN_ESPERA (no canceladas)
+    - Pago: PENDIENTE o SEÑADO (no pagadas)
+    - Turno: NO vencido (fecha >= hoy)
+    
+    Args:
+        criterio: Búsqueda libre (nombre, apellido, DNI, email)
+    
+    Returns:
+        Lista de reservas ordenadas por fecha de turno (próximas primero)
+        
+    Raises:
+        ValidationError si criterio está vacío
+    """
+    from django.utils import timezone
+    from django.db.models import Q
+    
+    criterio = (criterio or "").strip()
+    if not criterio:
+        raise ValidationError(_("El criterio de búsqueda no puede estar vacío."))
+    
+    hoy = timezone.now().date()
+    
+    reservas = Reserva.objects.filter(
+        usuario__nombre__icontains=criterio,
+        estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+        estado_pago__in=[Reserva.EstadoPago.PENDIENTE, Reserva.EstadoPago.SENADO],
+        turno__fecha__gte=hoy,
+    ).select_related("usuario", "turno", "turno__actividad")
+    
+    # O por apellido
+    reservas |= Reserva.objects.filter(
+        usuario__apellido__icontains=criterio,
+        estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+        estado_pago__in=[Reserva.EstadoPago.PENDIENTE, Reserva.EstadoPago.SENADO],
+        turno__fecha__gte=hoy,
+    ).select_related("usuario", "turno", "turno__actividad")
+    
+    # O por documento
+    reservas |= Reserva.objects.filter(
+        usuario__nro_documento__icontains=criterio,
+        estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+        estado_pago__in=[Reserva.EstadoPago.PENDIENTE, Reserva.EstadoPago.SENADO],
+        turno__fecha__gte=hoy,
+    ).select_related("usuario", "turno", "turno__actividad")
+    
+    # O por email
+    reservas |= Reserva.objects.filter(
+        usuario__email__icontains=criterio,
+        estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+        estado_pago__in=[Reserva.EstadoPago.PENDIENTE, Reserva.EstadoPago.SENADO],
+        turno__fecha__gte=hoy,
+    ).select_related("usuario", "turno", "turno__actividad")
+    
+    return reservas.distinct().order_by("turno__fecha", "turno__hora")
+
+
+@transaction.atomic
+def registrar_pago_efectivo_empleado(
+    usuario_empleado,
+    reserva_id: int,
+    monto_cobrado: Decimal,
+) -> ResultadoPago:
+    """
+    Registra un pago en efectivo en sede (sin tarjeta de crédito).
+    
+    Solo empleados pueden usar esta función. Actualiza la reserva de SEÑADO/PENDIENTE a PAGADO
+    y crea un registro de auditoría en Pago.
+    
+    Validaciones:
+    - Usuario es EMPLOYEE (rol)
+    - Reserva existe
+    - Reserva NO cancelada
+    - Reserva NO ya pagada
+    - Reserva en estado PENDIENTE o SEÑADO
+    - Turno NO vencido
+    - Monto >= monto adeudado
+    
+    Operación atómica: Si algo falla, no se crear Pago ni se actualiza Reserva.
+    Con select_for_update() previene que dos empleados paguen la misma reserva.
+    
+    Args:
+        usuario_empleado: Usuario con rol EMPLOYEE registrando el pago
+        reserva_id: ID de la reserva a pagar
+        monto_cobrado: Monto en efectivo recibido (Decimal)
+    
+    Returns:
+        ResultadoPago con exito=True si pago se registró correctamente
+        
+    Raises:
+        ValidationError si validación falla
+    """
+    from apps.accounts.models import Roles
+    
+    # Validar que usuario es empleado
+    if usuario_empleado.rol != Roles.EMPLOYEE:
+        raise ValidationError(
+            _("Solo empleados pueden registrar pagos en efectivo.")
+        )
+    
+    # Obtener reserva CON LOCK (select_for_update previene race condition)
+    try:
+        reserva = Reserva.objects.select_for_update().get(pk=reserva_id)
+    except Reserva.DoesNotExist:
+        raise ValidationError(_("Reserva no encontrada."))
+    
+    # Validaciones exhaustivas
+    _validar_reserva_para_pago_efectivo(reserva)
+    
+    # Validar monto
+    monto_adeudado = reserva.monto_saldo if reserva.estado_pago == Reserva.EstadoPago.SENADO else reserva.monto_total
+    if monto_cobrado < monto_adeudado:
+        raise ValidationError(
+            _("Monto insuficiente. Se adeuda $%(adeudado)s, se recibió $%(recibido)s.") % {
+                "adeudado": monto_adeudado,
+                "recibido": monto_cobrado,
+            }
+        )
+    
+    # Crear registro de pago (ANTES de actualizar reserva, pero en la misma transacción)
+    referencia = Pago.generar_referencia()
+    tipo_cobro = TIPO_SALDO if reserva.estado_pago == Reserva.EstadoPago.SENADO else TIPO_TOTAL
+    
+    pago = Pago.objects.create(
+        usuario=usuario_empleado,
+        reserva=reserva,
+        monto=monto_cobrado,
+        estado=Pago.Estado.APROBADO,
+        tipo_cobro=tipo_cobro,
+        referencia=referencia,
+        ultimos_4="EFVT",  # Efectivo
+        creditos_usados=0,
+    )
+    
+    # Actualizar estado de reserva (dentro de la misma transacción)
+    reserva.estado_pago = Reserva.EstadoPago.PAGADO
+    reserva.precio_abonado = reserva.monto_total
+    reserva.save(update_fields=["estado_pago", "precio_abonado"])
+    
+    # Mensaje de éxito
+    mensaje = _(
+        "✅ Pago en efectivo registrado exitosamente. "
+        "Reserva de %(cliente)s (%(actividad)s, %(fecha)s) pasó a estado PAGADO. "
+        "Referencia: %(ref)s"
+    ) % {
+        "cliente": reserva.usuario.get_full_name(),
+        "actividad": reserva.turno.actividad.nombre,
+        "fecha": reserva.turno.fecha.strftime("%d/%m/%Y"),
+        "ref": referencia,
+    }
+    
+    return ResultadoPago(
+        exito=True,
+        pago=pago,
+        mensaje=mensaje,
+        reserva=reserva,
+    )

@@ -322,3 +322,138 @@ def crear_empleado(request):
             messages.error(request, _("Ocurrió un error al crear la cuenta de empleado. Intente nuevamente."))
     
     return render(request, "accounts/crear_empleado.html", {"form": form})
+
+
+# ──────────────────────────────────────────────────────────────────
+#  EMPLOYEE: Registrar Pago en Efectivo (en Sede)
+# ──────────────────────────────────────────────────────────────────
+
+@login_required
+@rol_requerido("employee")
+def buscar_reserva_para_pago(request):
+    """
+    Búsqueda de reservas pendientes de pago para el cliente.
+    
+    Empleado busca por nombre, documento o email del cliente.
+    Muestra lista de reservas pagables (no vencidas, no canceladas, no pagadas).
+    """
+    from apps.pagos.forms import EmpleadoBusquedaReservaForm
+    from apps.pagos import services as pagos_services
+    
+    form = EmpleadoBusquedaReservaForm(request.POST or None)
+    resultados = []
+    
+    if request.method == "POST" and form.is_valid():
+        try:
+            criterio = form.cleaned_data["criterio_busqueda"]
+            resultados = pagos_services.buscar_reservas_por_cliente(criterio)
+            
+            if not resultados:
+                messages.info(
+                    request,
+                    _("No se encontraron reservas pendientes de pago para '%(criterio)s'.")
+                    % {"criterio": criterio}
+                )
+        except ValidationError as exc:
+            messages.error(request, exc.message)
+        except Exception as exc:
+            logger.error("Error en búsqueda de reservas: %s", exc)
+            messages.error(request, _("Ocurrió un error en la búsqueda. Intente nuevamente."))
+    
+    return render(request, "pagos/buscar_reserva_pago.html", {
+        "form": form,
+        "resultados": resultados,
+    })
+
+
+@login_required
+@rol_requerido("employee")
+def registrar_pago_efectivo(request, reserva_id):
+    """
+    Registra pago en efectivo en sede para una reserva SEÑADA o PENDIENTE.
+    
+    GET: Muestra resumen completo con detalles cliente, turno, montos.
+    POST: Procesa el pago, actualiza reserva a PAGADO, crea registro Pago.
+    """
+    from apps.pagos.forms import EmpleadoConfirmacionPagoForm
+    from apps.pagos import services as pagos_services
+    from apps.turnos.models import Reserva
+    
+    try:
+        # Obtener reserva (sin lock en GET)
+        if request.method == "POST":
+            # En POST, obtener dentro de la transacción (handled por service)
+            reserva = Reserva.objects.select_related(
+                "usuario", "turno", "turno__actividad"
+            ).get(pk=reserva_id)
+        else:
+            reserva = Reserva.objects.select_related(
+                "usuario", "turno", "turno__actividad"
+            ).get(pk=reserva_id)
+    except Reserva.DoesNotExist:
+        messages.error(request, _("Reserva no encontrada."))
+        return redirect("buscar_reserva_para_pago")
+    
+    # Validar que sea pagable (GET y POST)
+    try:
+        pagos_services._validar_reserva_para_pago_efectivo(reserva)
+    except ValidationError as exc:
+        messages.error(request, exc.message)
+        return redirect("buscar_reserva_para_pago")
+    
+    # Determinar monto a cobrar según estado
+    if reserva.estado_pago == Reserva.EstadoPago.SENADO:
+        monto_a_cobrar = reserva.monto_saldo
+        tipo_cobro_label = _("Saldo restante")
+    else:  # PENDIENTE
+        monto_a_cobrar = reserva.monto_total
+        tipo_cobro_label = _("Monto total")
+    
+    form = EmpleadoConfirmacionPagoForm(
+        request.POST or None,
+        initial={"monto_recibido": monto_a_cobrar}
+    )
+    
+    if request.method == "POST" and form.is_valid():
+        try:
+            monto_recibido = form.cleaned_data["monto_recibido"]
+            
+            resultado = pagos_services.registrar_pago_efectivo_empleado(
+                request.user,
+                reserva_id,
+                monto_recibido,
+            )
+            
+            if resultado.exito:
+                messages.success(request, resultado.mensaje)
+                logger.info(
+                    "Pago efectivo registrado por %s (ID=%s) para reserva ID=%s",
+                    request.user.email, request.user.pk, reserva_id
+                )
+                return redirect("buscar_reserva_para_pago")
+            else:
+                messages.error(request, resultado.mensaje)
+        
+        except ValidationError as exc:
+            messages.error(request, exc.message)
+            logger.warning("Error al registrar pago: %s", exc)
+        except Exception as exc:
+            logger.error("Error al registrar pago en efectivo: %s", exc)
+            messages.error(
+                request,
+                _("Ocurrió un error al registrar el pago. Intente nuevamente.")
+            )
+    
+    return render(request, "pagos/registrar_pago_efectivo.html", {
+        "form": form,
+        "reserva": reserva,
+        "cliente": reserva.usuario,
+        "turno": reserva.turno,
+        "actividad": reserva.turno.actividad,
+        "monto_total": reserva.monto_total,
+        "monto_sena": reserva.monto_sena,
+        "monto_saldo": reserva.monto_saldo,
+        "monto_a_cobrar": monto_a_cobrar,
+        "tipo_cobro_label": tipo_cobro_label,
+        "estado_pago": reserva.get_estado_pago_display(),
+    })

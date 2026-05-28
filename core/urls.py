@@ -12,6 +12,9 @@ urlpatterns = [
     path('panel/turnos/editar/<int:actividad_id>/<str:fecha_str>/<int:hora>/', turnos_views.editar_turno_slot, name='editar_turno_slot'),
     path('panel/turnos/<int:pk>/eliminar/', turnos_views.eliminar_turno, name='eliminar_turno'),
     path('panel/turnos/eliminar/<int:actividad_id>/<str:fecha_str>/<int:hora>/', turnos_views.eliminar_turno_slot, name='eliminar_turno_slot'),
+    # EMPLOYEE: Registrar Pago en Efectivo
+    path('panel/buscar-reserva-pago/', accounts_views.buscar_reserva_para_pago, name='buscar_reserva_pago'),
+    path('panel/registrar-pago/<int:reserva_id>/', accounts_views.registrar_pago_efectivo, name='registrar_pago_efectivo'),
     path('', home, name='home'),
     path('contacto/', contacto, name='contacto'),
     path("cuenta/", include("apps.accounts.urls")),
