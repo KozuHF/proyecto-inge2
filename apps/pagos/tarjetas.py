@@ -71,9 +71,7 @@ def validar_numero_tarjeta_campo(numero: str) -> str:
     if len(pan) != 16 or not pan.isdigit():
         raise ValidationError(_("Ingresá los 16 dígitos de la tarjeta."))
     if not es_pan_demo(pan):
-        raise ValidationError(
-            _("Tarjeta no válida para esta demostración. Usá una tarjeta habilitada.")
-        )
+        raise ValidationError(_("Número de tarjeta inválido."))
     return numero
 
 
@@ -93,9 +91,7 @@ def guardar_tarjeta(
 ) -> TarjetaGuardada:
     pan = normalizar_numero_tarjeta(numero_tarjeta)
     if not es_pan_demo(pan):
-        raise ValidationError(
-            _("Tarjeta no válida para esta demostración. Usá una tarjeta habilitada.")
-        )
+        raise ValidationError(_("Número de tarjeta inválido."))
     vencimiento_fmt = validar_vencimiento_campo(vencimiento)
     titular = (titular or "").strip()
     if not titular:
