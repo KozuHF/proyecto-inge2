@@ -148,6 +148,7 @@ def paso_hora(request):
     actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
     fecha = date_type.fromisoformat(wizard["fecha"])
     horas_info = services.obtener_horas_disponibles(actividad, fecha)
+    sin_horarios = len(horas_info) == 0
     form = PasoHoraForm(request.POST or None, horas_info=horas_info)
 
     if request.method == "POST" and form.is_valid():
@@ -163,6 +164,7 @@ def paso_hora(request):
         "fecha": fecha,
         "paso": 4,
         "modo": wizard["modo"],
+        "sin_horarios": sin_horarios,
     })
 
 

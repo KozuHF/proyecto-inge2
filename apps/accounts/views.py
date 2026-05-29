@@ -386,7 +386,7 @@ def buscar_reserva_para_pago(request):
                     % {"criterio": criterio}
                 )
         except ValidationError as exc:
-            messages.error(request, exc.message)
+            messages.error(request, str(exc))
         except Exception as exc:
             logger.error("Error en búsqueda de reservas: %s", exc)
             messages.error(request, _("Ocurrió un error en la búsqueda. Intente nuevamente."))
@@ -423,14 +423,14 @@ def registrar_pago_efectivo(request, reserva_id):
             ).get(pk=reserva_id)
     except Reserva.DoesNotExist:
         messages.error(request, _("Reserva no encontrada."))
-        return redirect("buscar_reserva_para_pago")
+        return redirect("buscar_reserva_pago")
     
     # Validar que sea pagable (GET y POST)
     try:
         pagos_services._validar_reserva_para_pago_efectivo(reserva)
     except ValidationError as exc:
-        messages.error(request, exc.message)
-        return redirect("buscar_reserva_para_pago")
+        messages.error(request, str(exc))
+        return redirect("buscar_reserva_pago")
     
     # Determinar monto a cobrar según estado
     if reserva.estado_pago == Reserva.EstadoPago.SENADO:
@@ -461,12 +461,12 @@ def registrar_pago_efectivo(request, reserva_id):
                     "Pago efectivo registrado por %s (ID=%s) para reserva ID=%s",
                     request.user.email, request.user.pk, reserva_id
                 )
-                return redirect("buscar_reserva_para_pago")
+                return redirect("buscar_reserva_pago")
             else:
                 messages.error(request, resultado.mensaje)
         
         except ValidationError as exc:
-            messages.error(request, exc.message)
+            messages.error(request, str(exc))
             logger.warning("Error al registrar pago: %s", exc)
         except Exception as exc:
             logger.error("Error al registrar pago en efectivo: %s", exc)

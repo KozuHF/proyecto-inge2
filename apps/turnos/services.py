@@ -121,7 +121,24 @@ def _crear_reserva_para_turno(usuario, turno: Turno, tipo: str, grupo=None) -> R
             _("Ya tenés una reserva activa para el turno %(turno)s.") % {"turno": turno}
         )
 
-    estado = Reserva.Estado.EN_ESPERA if turno.esta_lleno else Reserva.Estado.CONFIRMADA
+    # Conflicto de horario con OTRA actividad
+    conflicto_horario = Reserva.objects.filter(
+        usuario=usuario,
+        turno__fecha=turno.fecha,
+        turno__hora=turno.hora,
+        estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+    ).exists()
+
+    if conflicto_horario:
+        raise ValidationError(
+            _("Ya tenés otra reserva en ese día y horario.")
+        )
+
+    estado = (
+        Reserva.Estado.EN_ESPERA
+        if turno.esta_lleno
+        else Reserva.Estado.CONFIRMADA
+    )
 
     return Reserva.objects.create(
         usuario=usuario,
@@ -130,6 +147,7 @@ def _crear_reserva_para_turno(usuario, turno: Turno, tipo: str, grupo=None) -> R
         tipo_reserva=tipo,
         grupo_mensual=grupo,
     )
+
 
 
 # ── Fechas candidatas para «varios turnos» ────────────────────────────────────
@@ -395,45 +413,57 @@ def obtener_horas_disponibles(actividad, fecha) -> list[dict]:
     """
     Devuelve los bloques horarios disponibles para reservar en una fecha dada.
 
-    Solo se incluyen horas que el admin habilitó mediante un HorarioDisponible
-    activo para esa actividad y ese día de la semana.  Si el turno físico ya
-    existe en BD se usa su información; si no existe aún se crea al momento de
-    confirmar la reserva (en _obtener_o_crear_turno).
+    Fuentes (unión):
+    - HorarioDisponible activo para ese día de la semana.
+    - Turno ya persistido en BD para esa fecha (creado desde el panel o generado).
+    - Si la actividad no tiene ningún horario configurado: rango estándar HORAS_VALIDAS.
     """
-    from .models import HorarioDisponible
+    from .models import HorarioDisponible, HORAS_VALIDAS
 
     dia_semana = fecha.weekday()
 
-    # Horarios que el admin definió para este día de la semana
-    horarios = (
-        HorarioDisponible.objects
-        .filter(actividad=actividad, dia_semana=dia_semana, activo=True)
-        .order_by("hora")
-    )
-
-    # Turnos físicos que ya existen para esta fecha
     turnos_existentes = {
         t.hora: t
         for t in Turno.objects.filter(actividad=actividad, fecha=fecha)
     }
 
+    # hora -> cupos por defecto si aún no hay turno físico
+    slots: dict[int, int] = {}
+
+    horarios_dia = (
+        HorarioDisponible.objects
+        .filter(actividad=actividad, dia_semana=dia_semana, activo=True)
+        .order_by("hora")
+    )
+
+    if horarios_dia.exists():
+        for h in horarios_dia:
+            slots[h.hora] = h.cupos_efectivos()
+    elif not HorarioDisponible.objects.filter(actividad=actividad, activo=True).exists():
+        for h in HORAS_VALIDAS:
+            slots[h] = actividad.cupos
+
+    # Turnos creados en el panel (u otros) deben verse aunque no haya HorarioDisponible
+    for hora, turno in turnos_existentes.items():
+        slots.setdefault(hora, turno.cupos)
+
     resultado = []
-    for horario in horarios:
-        hora = horario.hora
+    for hora in sorted(slots.keys()):
+        cupos_default = slots[hora]
         turno = turnos_existentes.get(hora)
         if turno:
-            libres    = turno.cupos_libres
-            lleno     = turno.esta_lleno
+            libres = turno.cupos_libres
+            lleno = turno.esta_lleno
             en_espera = turno.lista_espera.count()
         else:
-            libres    = horario.cupos_efectivos()
-            lleno     = False
+            libres = cupos_default
+            lleno = False
             en_espera = 0
 
         resultado.append({
-            "hora":      hora,
-            "libres":    libres,
-            "lleno":     lleno,
+            "hora": hora,
+            "libres": libres,
+            "lleno": lleno,
             "en_espera": en_espera,
         })
     return resultado
