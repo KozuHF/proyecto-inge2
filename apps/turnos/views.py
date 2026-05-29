@@ -12,6 +12,7 @@ Wizard con sesión (`wizard_reserva`):
 import logging
 from datetime import date as date_type, timedelta
 
+from django.utils import timezone
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -400,10 +401,12 @@ class VirtualTurno:
 @rol_requerido("admin")
 def panel_turnos(request):
     fecha_str = request.GET.get("fecha")
-    try:
-        fecha = date_type.fromisoformat(fecha_str) if fecha_str else date_type.today()
-    except ValueError:
-        fecha = date_type.today()
+    fecha = None
+    if fecha_str:
+        try:
+            fecha = date_type.fromisoformat(fecha_str)
+        except ValueError:
+            pass
 
     actividad_id = request.GET.get("actividad")
     estado_ocupacion = request.GET.get("estado_ocupacion", "todos")
@@ -412,13 +415,18 @@ def panel_turnos(request):
 
     from .models import DIAS_HABILES, FERIADOS_INAMOVIBLES
 
-    es_feriado = (fecha.month, fecha.day) in FERIADOS_INAMOVIBLES
-    es_dia_invalido = (fecha.weekday() not in DIAS_HABILES) or es_feriado
+    if fecha:
+        es_feriado = (fecha.month, fecha.day) in FERIADOS_INAMOVIBLES
+        es_dia_invalido = (fecha.weekday() not in DIAS_HABILES) or es_feriado
+    else:
+        es_feriado = False
+        es_dia_invalido = False
 
-    # Solo turnos reales persistidos en BD para la fecha dada
+    # Solo turnos reales persistidos en BD (no más lejanos que 6 meses desde hoy)
+    max_futuro = date_type.today() + timedelta(days=6 * 30)
     turnos_qs = (
         Turno.objects
-        .filter(fecha=fecha)
+        .filter(fecha__lte=max_futuro)
         .select_related("actividad")
         .prefetch_related("reservas__usuario")
         .annotate(
@@ -427,18 +435,34 @@ def panel_turnos(request):
                 filter=Q(reservas__estado=Reserva.Estado.CONFIRMADA)
             )
         )
-        .order_by("hora", "actividad")
     )
-    if actividad_id and actividad_id != "todas":
-        try:
-            turnos_qs = turnos_qs.filter(actividad_id=int(actividad_id))
-        except ValueError:
-            pass
+
+    if fecha:
+        turnos_qs = turnos_qs.filter(fecha=fecha)
+
+        if actividad_id and actividad_id != "todas":
+            try:
+                turnos_qs = turnos_qs.filter(actividad_id=int(actividad_id))
+            except ValueError:
+                pass
+
+    # Ordenar por fecha y luego hora
+    turnos_qs = turnos_qs.order_by("fecha", "hora", "actividad")
 
     slots = list(turnos_qs)
 
-    # Filtrar por ocupación si se pidió
-    if estado_ocupacion != "todos":
+    # Adjuntar estado de plantilla (activo/inactivo) a cada turno
+    horarios_info = HorarioDisponible.objects.values("actividad_id", "dia_semana", "hora", "activo")
+    horarios_map = {
+        (h["actividad_id"], h["dia_semana"], h["hora"]): h["activo"]
+        for h in horarios_info
+    }
+    for s in slots:
+        key = (s.actividad_id, s.fecha.weekday(), s.hora)
+        s.horario_activo = horarios_map.get(key, True)
+
+    # Filtrar por ocupación si se pidió (solo en el backend si se especificó fecha)
+    if fecha and estado_ocupacion != "todos":
         filtered = []
         for s in slots:
             if estado_ocupacion == "vacios" and s.confirmadas_count == 0:
@@ -601,9 +625,15 @@ def eliminar_turno(request, pk):
             with transaction.atomic():
                 for t in future_turnos:
                     t.delete()
+                # Eliminar también la plantilla del horario recurrente
+                HorarioDisponible.objects.filter(
+                    actividad=turno_db.actividad,
+                    dia_semana=turno_db.fecha.weekday(),
+                    hora=turno_db.hora
+                ).delete()
             messages.success(
                 request,
-                _("Se eliminaron %(count)d turnos programados (hoy y futuros) para este día y horario.")
+                _("Se eliminaron %(count)d turnos programados (hoy y futuros) y se liberó el horario de origen.")
                 % {"count": deleted_count}
             )
         else:
@@ -648,9 +678,15 @@ def eliminar_turno_slot(request, actividad_id, fecha_str, hora):
             with transaction.atomic():
                 for t in future_turnos:
                     t.delete()
+                # Eliminar también la plantilla del horario recurrente
+                HorarioDisponible.objects.filter(
+                    actividad=actividad,
+                    dia_semana=fecha.weekday(),
+                    hora=hora
+                ).delete()
             messages.success(
                 request,
-                _("Se eliminaron %(count)d turnos programados (hoy y futuros) para este día y horario.")
+                _("Se eliminaron %(count)d turnos programados (hoy y futuros) y se liberó el horario de origen.")
                 % {"count": deleted_count}
             )
         else:
@@ -675,18 +711,7 @@ def eliminar_turno_slot(request, actividad_id, fecha_str, hora):
 
 # ── Gestión de HorarioDisponible (solo admin) ─────────────────────────────────
 
-@login_required
-@rol_requerido("admin")
-def lista_horarios_disponibles(request):
-    """Lista todos los horarios habilitados por el admin."""
-    horarios = (
-        HorarioDisponible.objects
-        .select_related("actividad")
-        .order_by("dia_semana", "hora", "actividad")
-    )
-    return render(request, "turnos/lista_horarios_disponibles.html", {
-        "horarios": horarios,
-    })
+# La vista lista_horarios_disponibles ha sido eliminada. El panel de turnos unifica la gestión.
 
 
 @login_required
@@ -696,26 +721,64 @@ def crear_horario_disponible(request):
     El admin crea un horario recurrente: elige actividad, día de la semana y hora.
     Al guardar, genera automáticamente los Turno de los próximos 6 meses.
     """
+    import json
+    from collections import defaultdict
+
+    # Determinar qué franjas tienen horarios activos en la base de datos
+    horarios_existentes = list(
+        HorarioDisponible.objects.filter(activo=True).values("actividad_id", "dia_semana", "hora")
+    )
+    horarios_existentes_json = json.dumps(horarios_existentes)
+
+    # Determinar qué franjas tienen turnos futuros reales en BD para la ayuda
+    hoy = timezone.now().date()
+    future_turnos = Turno.objects.filter(fecha__gte=hoy).order_by("fecha")
+
+    turnos_por_slot = defaultdict(list)
+    for t in future_turnos:
+        wd = t.fecha.weekday()
+        slot_key = f"{t.actividad_id}_{wd}_{t.hora}"
+        turnos_por_slot[slot_key].append(t.fecha.isoformat())
+
+    turnos_por_slot_json = json.dumps(dict(turnos_por_slot))
+
     form = HorarioDisponibleForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         try:
-            horario = form.save(commit=False)
-            horario.full_clean()
-            horario.save()
-            creados, omitidos = services.generar_turnos_desde_horario(horario, meses=6)
+            with transaction.atomic():
+                horario = form.save(commit=False)
+                # Borrar duplicados que no tengan turnos futuros para evitar error de constraint único
+                duplicate = HorarioDisponible.objects.filter(
+                    actividad=horario.actividad,
+                    dia_semana=horario.dia_semana,
+                    hora=horario.hora
+                )
+                if duplicate.exists():
+                    duplicate.delete()
+                horario.full_clean()
+                horario.save()
+            creados, omitidos = services.generar_turnos_desde_horario(horario, meses=120)
             messages.success(
                 request,
                 _(
                     "Horario creado: %(horario)s. "
-                    "Se generaron %(creados)d turno(s) para los próximos 6 meses "
+                    "Se generaron %(creados)d turno(s) "
                     "(%(omitidos)d fecha(s) omitida(s) por ser feriado o ya existir)."
                 ) % {"horario": horario, "creados": creados, "omitidos": omitidos},
             )
-            return redirect("turnos:lista_horarios_disponibles")
+            return redirect("panel_turnos")
         except ValidationError as e:
             form.add_error(None, e)
 
-    return render(request, "turnos/crear_horario_disponible.html", {"form": form})
+    return render(
+        request,
+        "turnos/crear_horario_disponible.html",
+        {
+            "form": form,
+            "horarios_existentes_json": horarios_existentes_json,
+            "turnos_por_slot_json": turnos_por_slot_json,
+        },
+    )
 
 
 @login_required
@@ -727,34 +790,70 @@ def editar_horario_disponible(request, pk):
     """
     horario = get_object_or_404(HorarioDisponible, pk=pk)
     estaba_inactivo = not horario.activo
+    import json
+    from collections import defaultdict
+
+    # Determinar qué franjas tienen horarios activos en la base de datos (excluyendo el actual)
+    horarios_existentes = list(
+        HorarioDisponible.objects.exclude(pk=pk).filter(activo=True).values("actividad_id", "dia_semana", "hora")
+    )
+    horarios_existentes_json = json.dumps(horarios_existentes)
+
+    # Determinar qué franjas tienen turnos futuros reales en BD para la ayuda
+    hoy = timezone.now().date()
+    future_turnos = Turno.objects.filter(fecha__gte=hoy).order_by("fecha")
+
+    turnos_por_slot = defaultdict(list)
+    for t in future_turnos:
+        wd = t.fecha.weekday()
+        slot_key = f"{t.actividad_id}_{wd}_{t.hora}"
+        turnos_por_slot[slot_key].append(t.fecha.isoformat())
+
+    turnos_por_slot_json = json.dumps(dict(turnos_por_slot))
+
     form = HorarioDisponibleForm(request.POST or None, instance=horario)
     if request.method == "POST" and form.is_valid():
         try:
-            h = form.save(commit=False)
-            h.full_clean()
-            h.save()
+            with transaction.atomic():
+                h = form.save(commit=False)
+                # Borrar duplicados que no tengan turnos futuros para evitar error de constraint único
+                duplicate = HorarioDisponible.objects.filter(
+                    actividad=h.actividad,
+                    dia_semana=h.dia_semana,
+                    hora=h.hora
+                ).exclude(pk=h.pk)
+                if duplicate.exists():
+                    duplicate.delete()
+                h.full_clean()
+                h.save()
             # Si se acaba de reactivar, generar los turnos que faltan
             se_reactivo = estaba_inactivo and h.activo
             if se_reactivo:
-                creados, omitidos = services.generar_turnos_desde_horario(h, meses=6)
+                creados, omitidos = services.generar_turnos_desde_horario(h, meses=120)
                 messages.success(
                     request,
                     _(
                         "Horario reactivado. "
-                        "Se generaron %(creados)d turno(s) para los próximos 6 meses "
+                        "Se generaron %(creados)d turno(s) "
                         "(%(omitidos)d fecha(s) omitida(s) por ser feriado o ya existir)."
                     ) % {"creados": creados, "omitidos": omitidos},
                 )
             else:
                 messages.success(request, _("Horario actualizado."))
-            return redirect("turnos:lista_horarios_disponibles")
+            return redirect("panel_turnos")
         except ValidationError as e:
             form.add_error(None, e)
 
-    return render(request, "turnos/editar_horario_disponible.html", {
-        "form": form,
-        "horario": horario,
-    })
+    return render(
+        request,
+        "turnos/editar_horario_disponible.html",
+        {
+            "form": form,
+            "horario": horario,
+            "horarios_existentes_json": horarios_existentes_json,
+            "turnos_por_slot_json": turnos_por_slot_json,
+        },
+    )
 
 
 @login_required
@@ -773,6 +872,6 @@ def eliminar_horario_disponible(request, pk):
             _("Horario eliminado: %(horario)s. Los turnos ya creados no se ven afectados.")
             % {"horario": str_horario},
         )
-        return redirect("turnos:lista_horarios_disponibles")
+        return redirect("panel_turnos")
 
     return render(request, "turnos/eliminar_horario_confirm.html", {"horario": horario})

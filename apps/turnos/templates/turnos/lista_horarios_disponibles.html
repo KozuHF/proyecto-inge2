@@ -1,16 +1,16 @@
-{% extends "_base.html" %}
+{% extends "accounts/panel_base.html" %}
 {% load i18n %}
 
 {% block title %}Horarios disponibles — Club360{% endblock %}
 
-{% block content %}
-<div class="max-w-5xl mx-auto px-4 py-10">
+{% block panel_content %}
+<div class="max-w-5xl mx-auto">
 
   <!-- Encabezado -->
   <div class="flex items-center justify-between mb-6">
     <div>
       <h1 class="text-2xl font-extrabold text-gray-900 dark:text-white">Horarios disponibles</h1>
-      <p class="text-sm text-gray-500 mt-1">Cada horario genera turnos automáticamente para los próximos 6 meses.</p>
+      <p class="text-sm text-gray-500 mt-1">Definí los días y horarios en los que se habilitarán turnos para cada actividad.</p>
     </div>
     <a href="{% url 'turnos:crear_horario_disponible' %}"
        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
@@ -43,36 +43,32 @@
             <th class="px-5 py-3">Día</th>
             <th class="px-5 py-3">Horario</th>
             <th class="px-5 py-3">Cupos</th>
+            <th class="px-5 py-3">Monto</th>
             <th class="px-5 py-3">Estado</th>
             <th class="px-5 py-3 text-right">Acciones</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-900">
           {% for h in horarios %}
-          <tr class="hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-            <td class="px-5 py-3 font-medium text-gray-900 dark:text-white">{{ h.actividad }}</td>
+          <tr class="transition {% if not h.activo %}opacity-50 bg-gray-50/40 dark:bg-gray-800/20 text-gray-400 dark:text-gray-500{% else %}hover:bg-gray-50 dark:hover:bg-gray-800{% endif %}">
+            <td class="px-5 py-3 font-medium text-gray-900 dark:text-white {% if not h.activo %}text-gray-400 dark:text-gray-500{% endif %}">{{ h.actividad }}</td>
             <td class="px-5 py-3">{{ h.get_dia_semana_display }}</td>
             <td class="px-5 py-3">{{ h.hora|stringformat:"02d" }}:00 – {% widthratio h.hora 1 1 as hora_fin %}{{ h.hora|add:1|stringformat:"02d" }}:00</td>
-            <td class="px-5 py-3">
-              {% if h.cupos %}
-                {{ h.cupos }}
-              {% else %}
-                <span class="text-gray-400 italic">{{ h.actividad.cupos }} (actividad)</span>
-              {% endif %}
-            </td>
+            <td class="px-5 py-3">{{ h.cupos }}</td>
+            <td class="px-5 py-3 font-semibold text-gray-900 dark:text-white {% if not h.activo %}text-gray-400 dark:text-gray-500{% endif %}">${{ h.precio }}</td>
             <td class="px-5 py-3">
               {% if h.activo %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Activo</span>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Activo</span>
               {% else %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">Inactivo</span>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Inactivo</span>
               {% endif %}
             </td>
             <td class="px-5 py-3 text-right">
               <div class="inline-flex gap-2">
                 <a href="{% url 'turnos:editar_horario_disponible' h.pk %}"
-                   class="text-xs font-medium text-blue-600 hover:underline">Editar</a>
+                   class="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:underline">Editar</a>
                 <a href="{% url 'turnos:eliminar_horario_disponible' h.pk %}"
-                   class="text-xs font-medium text-red-500 hover:underline">Eliminar</a>
+                   class="text-xs font-medium text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:underline">Eliminar</a>
               </div>
             </td>
           </tr>
@@ -92,4 +88,4 @@
   {% endif %}
 
 </div>
-{% endblock %}
+{% endblock panel_content %}

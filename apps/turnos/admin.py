@@ -69,7 +69,7 @@ class HorarioDisponibleAdmin(admin.ModelAdmin):
     solo puede existir un horario por actividad + día + hora.
     """
 
-    list_display  = ("actividad", "dia_semana_display", "hora_display", "cupos_display", "activo")
+    list_display  = ("actividad", "dia_semana_display", "hora_display", "cupos_display", "precio", "activo")
     list_filter   = ("actividad", "dia_semana", "activo")
     search_fields = ("actividad__nombre",)
     ordering      = ("dia_semana", "hora", "actividad")
@@ -85,7 +85,7 @@ class HorarioDisponibleAdmin(admin.ModelAdmin):
             ),
         }),
         (_("Configuración"), {
-            "fields": ("cupos", "activo"),
+            "fields": ("cupos", "precio", "activo"),
         }),
     )
 
@@ -119,12 +119,12 @@ class HorarioDisponibleAdmin(admin.ModelAdmin):
         se_reactivo = change and estaba_inactivo and obj.activo
 
         if es_nuevo or se_reactivo:
-            creados, omitidos = services.generar_turnos_desde_horario(obj, meses=6)
+            creados, omitidos = services.generar_turnos_desde_horario(obj, meses=120)
             accion = "creado" if es_nuevo else "reactivado"
             self.message_user(
                 request,
                 _(
-                    "Horario %(accion)s. Se generaron %(creados)d turno(s) para los próximos 6 meses "
+                    "Horario %(accion)s. Se generaron %(creados)d turno(s) "
                     "(%(omitidos)d fecha(s) omitida(s) por ser feriado o ya existir)."
                 ) % {"accion": accion, "creados": creados, "omitidos": omitidos},
             )

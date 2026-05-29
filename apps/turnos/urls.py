@@ -16,7 +16,6 @@ urlpatterns = [
     path("grupos/<int:pk>/cancelar/", views.cancelar_grupo_mensual, name="cancelar_grupo_mensual"),
 
     # ── Gestión de horarios disponibles (solo admin) ──────────────────────────
-    path("horarios/", views.lista_horarios_disponibles, name="lista_horarios_disponibles"),
     path("horarios/crear/", views.crear_horario_disponible, name="crear_horario_disponible"),
     path("horarios/<int:pk>/editar/", views.editar_horario_disponible, name="editar_horario_disponible"),
     path("horarios/<int:pk>/eliminar/", views.eliminar_horario_disponible, name="eliminar_horario_disponible"),
