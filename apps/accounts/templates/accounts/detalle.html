@@ -88,13 +88,13 @@
 
         <!-- Acciones -->
         <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-3">
-            <a href="{% url 'accounts:editar' usuario.pk %}" class="px-5 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
+            <a href="{% url 'accounts:editar' usuario.pk %}" style="display: none !important;" class="px-5 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
                 Editar datos
             </a>
 
             {% if request.user.is_staff %}
                 {% if usuario.is_active %}
-                    <form method="post" action="{% url 'accounts:desactivar' usuario.pk %}" class="inline-block" onsubmit="return confirm('¿Estás seguro de desactivar a {{ usuario.get_full_name }}?');">
+                    <form method="post" action="{% url 'accounts:desactivar' usuario.pk %}" style="display: none !important;" class="inline-block" onsubmit="return confirm('¿Estás seguro de desactivar a {{ usuario.get_full_name }}?');">
                         {% csrf_token %}
                         <button type="submit" class="px-5 py-2.5 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition">
                             Desactivar usuario

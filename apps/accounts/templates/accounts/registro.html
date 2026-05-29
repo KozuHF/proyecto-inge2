@@ -96,72 +96,98 @@ document.addEventListener('DOMContentLoaded', function() {
     const nombre = document.getElementById('id_nombre');
     const apellido = document.getElementById('id_apellido');
 
+    function setFieldError(inputEl, hasError, errorMsgText) {
+        // Remove any server-side errors for this field once the user interacts
+        const serverErrors = inputEl.parentNode.querySelectorAll('p.text-red-600:not(.js-error-msg)');
+        serverErrors.forEach(el => el.remove());
+
+        let errorMsg = inputEl.parentNode.querySelector('.js-error-msg');
+        if (hasError) {
+            inputEl.classList.add('border-red-500');
+            inputEl.classList.remove('focus:ring-green-500', 'focus:border-green-500');
+            if (!errorMsg) {
+                errorMsg = document.createElement('p');
+                errorMsg.className = 'mt-1 text-sm text-red-600 js-error-msg';
+                inputEl.parentNode.appendChild(errorMsg);
+            }
+            errorMsg.textContent = errorMsgText;
+        } else {
+            inputEl.classList.remove('border-red-500');
+            inputEl.classList.add('focus:ring-green-500', 'focus:border-green-500');
+            if (errorMsg) {
+                errorMsg.remove();
+            }
+        }
+    }
+
+    function validarDni() {
+        if (!nroDoc) return true;
+        const val = nroDoc.value.trim();
+        if (val.length === 0) {
+            setFieldError(nroDoc, false);
+            return true;
+        }
+        const invalid = val.length !== 8 || /[^0-9]/.test(val);
+        setFieldError(nroDoc, invalid, 'El documento debe tener exactamente 8 números.');
+        return !invalid;
+    }
+
+    function validarNombre() {
+        if (!nombre) return true;
+        const val = nombre.value.trim();
+        const invalid = val.length > 0 && /[0-9]/.test(val);
+        setFieldError(nombre, invalid, 'El nombre no puede contener números.');
+        return !invalid;
+    }
+
+    function validarApellido() {
+        if (!apellido) return true;
+        const val = apellido.value.trim();
+        const invalid = val.length > 0 && /[0-9]/.test(val);
+        setFieldError(apellido, invalid, 'El apellido no puede contener números.');
+        return !invalid;
+    }
+
     if (nroDoc) {
         nroDoc.setAttribute('maxlength', '8');
         nroDoc.setAttribute('inputmode', 'numeric');
         nroDoc.removeAttribute('required');
 
         nroDoc.addEventListener('input', function() {
-            // Remove non-digit characters silently and clear custom validity
             this.value = this.value.replace(/[^0-9]/g, '');
-            this.setCustomValidity('');
+            validarDni();
         });
     }
 
     if (nombre) {
         nombre.removeAttribute('required');
         nombre.addEventListener('input', function() {
-            // Remove digits silently and clear custom validity
             this.value = this.value.replace(/[0-9]/g, '');
-            this.setCustomValidity('');
+            validarNombre();
         });
     }
 
     if (apellido) {
         apellido.removeAttribute('required');
         apellido.addEventListener('input', function() {
-            // Remove digits silently and clear custom validity
             this.value = this.value.replace(/[0-9]/g, '');
-            this.setCustomValidity('');
+            validarApellido();
         });
     }
 
     if (form) {
         form.addEventListener('submit', function(event) {
-            if (nroDoc) {
-                const val = nroDoc.value.trim();
-                if (val.length > 0) {
-                    if (val.length !== 8 || /[^0-9]/.test(val)) {
-                        nroDoc.setCustomValidity('El documento debe tener exactamente 8 números.');
-                        nroDoc.reportValidity();
-                        event.preventDefault();
-                        return false;
-                    }
-                } else {
-                    nroDoc.setCustomValidity('');
-                }
-            }
-            if (nombre) {
-                const val = nombre.value.trim();
-                if (val.length > 0 && /[0-9]/.test(val)) {
-                    nombre.setCustomValidity('El nombre no puede contener números.');
-                    nombre.reportValidity();
-                    event.preventDefault();
-                    return false;
-                } else {
-                    nombre.setCustomValidity('');
-                }
-            }
-            if (apellido) {
-                const val = apellido.value.trim();
-                if (val.length > 0 && /[0-9]/.test(val)) {
-                    apellido.setCustomValidity('El apellido no puede contener números.');
-                    apellido.reportValidity();
-                    event.preventDefault();
-                    return false;
-                } else {
-                    apellido.setCustomValidity('');
-                }
+            let isValid = true;
+            if (nroDoc && !validarDni()) isValid = false;
+            if (nombre && !validarNombre()) isValid = false;
+            if (apellido && !validarApellido()) isValid = false;
+
+            if (!isValid) {
+                event.preventDefault();
+                // Focus the first invalid element
+                const firstInvalid = document.querySelector('.border-red-500');
+                if (firstInvalid) firstInvalid.focus();
+                return false;
             }
         });
     }
