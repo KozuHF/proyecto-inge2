@@ -1,0 +1,107 @@
+{% extends "_base.html" %}
+{% load i18n %}
+
+{% block title %}Editar horario — Club360{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto px-4 py-10">
+
+  <!-- Breadcrumb -->
+  <nav class="text-sm text-gray-400 mb-6">
+    <a href="{% url 'turnos:lista_horarios_disponibles' %}" class="hover:text-gray-600">Horarios</a>
+    <span class="mx-2">/</span>
+    <span class="text-gray-600 font-medium">Editar</span>
+  </nav>
+
+  <h1 class="text-2xl font-extrabold text-gray-900 dark:text-white mb-1">Editar horario</h1>
+  <p class="text-sm text-gray-500 mb-8">
+    <span class="font-medium text-gray-700 dark:text-gray-300">{{ horario }}</span>
+    — Si reactivás un horario inactivo se generarán los turnos faltantes de los próximos 6 meses.
+  </p>
+
+  <!-- Errores no de campo -->
+  {% if form.non_field_errors %}
+    <div class="mb-5 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+      {% for error in form.non_field_errors %}
+        <p>{{ error }}</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post" class="space-y-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-sm">
+    {% csrf_token %}
+
+    <!-- Actividad (solo lectura en edición si querés bloquearlo, aquí se muestra editable) -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        {{ form.actividad.label }}
+      </label>
+      {{ form.actividad }}
+      {% if form.actividad.errors %}
+        <p class="mt-1 text-xs text-red-600">{{ form.actividad.errors|join:", " }}</p>
+      {% endif %}
+    </div>
+
+    <!-- Día de la semana -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        {{ form.dia_semana.label }}
+      </label>
+      {{ form.dia_semana }}
+      {% if form.dia_semana.errors %}
+        <p class="mt-1 text-xs text-red-600">{{ form.dia_semana.errors|join:", " }}</p>
+      {% endif %}
+    </div>
+
+    <!-- Hora -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        {{ form.hora.label }}
+      </label>
+      {{ form.hora }}
+      {% if form.hora.errors %}
+        <p class="mt-1 text-xs text-red-600">{{ form.hora.errors|join:", " }}</p>
+      {% endif %}
+    </div>
+
+    <!-- Cupos -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        {{ form.cupos.label }}
+      </label>
+      {{ form.cupos }}
+      <p class="mt-1 text-xs text-gray-400">Dejá vacío para usar los cupos predeterminados de la actividad.</p>
+      {% if form.cupos.errors %}
+        <p class="mt-1 text-xs text-red-600">{{ form.cupos.errors|join:", " }}</p>
+      {% endif %}
+    </div>
+
+    <!-- Activo -->
+    <div class="flex items-center gap-3 pt-1">
+      {{ form.activo }}
+      <label for="{{ form.activo.id_for_label }}" class="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+        {{ form.activo.label }}
+      </label>
+    </div>
+
+    <!-- Acciones -->
+    <div class="flex items-center justify-between pt-2">
+      <a href="{% url 'turnos:eliminar_horario_disponible' horario.pk %}"
+         class="text-sm font-medium text-red-500 hover:underline">
+        Eliminar horario
+      </a>
+      <div class="flex gap-3">
+        <a href="{% url 'turnos:lista_horarios_disponibles' %}"
+           class="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+          Cancelar
+        </a>
+        <button type="submit"
+                class="px-5 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
+          Guardar cambios
+        </button>
+      </div>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

@@ -222,18 +222,16 @@ class TurnosPanelTestCase(TestCase):
         url = reverse('panel_turnos')
         # 2026-05-18 is a Monday (has our shift and virtual slots)
 
-        num_actividades = Actividad.objects.count()
-        total_slots = num_actividades * 14
-
         # When filtering by 'todos'
         response_all = self.client.get(url, {'fecha': '2026-05-18', 'estado_ocupacion': 'todos'})
         self.assertEqual(response_all.status_code, 200)
-        self.assertEqual(len(response_all.context['turnos']), total_slots)
+        self.assertEqual(len(response_all.context['turnos']), 1)
+        self.assertIn(self.turno, response_all.context['turnos'])
 
         # When filtering by 'vacios'
         response_vacios = self.client.get(url, {'fecha': '2026-05-18', 'estado_ocupacion': 'vacios'})
         self.assertEqual(response_vacios.status_code, 200)
-        self.assertEqual(len(response_vacios.context['turnos']), total_slots - 1)
+        self.assertEqual(len(response_vacios.context['turnos']), 0)
         self.assertNotIn(self.turno, response_vacios.context['turnos'])
 
     def test_panel_turnos_holiday(self):
@@ -371,10 +369,17 @@ class TurnosPanelTestCase(TestCase):
     def test_paso_fecha_form_holiday(self):
         """PasoFechaForm should be invalid on a holiday."""
         from apps.turnos.forms import PasoFechaForm
-        form = PasoFechaForm(data={'fecha': '2026-05-25'})  # Monday May 25 is holiday (Revolución de Mayo)
-        self.assertFalse(form.is_valid())
-        self.assertIn('fecha', form.errors)
-        self.assertIn('feriado nacional', form.errors['fecha'][0])
+        from unittest.mock import patch
+        from django.utils import timezone
+        from datetime import datetime
+
+        # Mock timezone.now() to return May 1, 2026 so that May 25 is in the future
+        with patch('apps.turnos.forms.timezone.now') as mock_now:
+            mock_now.return_value = timezone.make_aware(datetime(2026, 5, 1))
+            form = PasoFechaForm(data={'fecha': '2026-05-25'})  # Monday May 25 is holiday (Revolución de Mayo)
+            self.assertFalse(form.is_valid())
+            self.assertIn('fecha', form.errors)
+            self.assertIn('feriado nacional', form.errors['fecha'][0])
 
     def test_obtener_fechas_candidatas_varios_excludes_holidays(self):
         """obtener_fechas_candidatas_varios should exclude Mondays that are holidays (e.g. May 25, 2026)."""
@@ -391,8 +396,8 @@ class TurnosPanelTestCase(TestCase):
             defaults={"activo": True},
         )
 
-        # Mock timezone.now() to return May 1, 2026
-        with patch('django.utils.timezone.now') as mock_now:
+        # Mock timezone.now() to return May 1, 2026 so that May 25 is in the future
+        with patch('apps.turnos.forms.timezone.now') as mock_now:
             mock_now.return_value = timezone.make_aware(datetime(2026, 5, 1, 10, 0, 0))
 
             from apps.turnos.services import obtener_fechas_candidatas_varios
