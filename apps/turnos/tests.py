@@ -609,3 +609,124 @@ class HorarioDisponibleValidationTestCase(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("__all__", form.errors)
         self.assertIn("Ya existe un horario activo y con turnos futuros", form.errors["__all__"][0])
+
+
+class ComprobanteReservaMailTestCase(TestCase):
+    """Comprobante por mail al registrar un turno."""
+
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user(
+            email="cliente@test.com",
+            nombre="Juan",
+            apellido="Perez",
+            nro_documento="55555555",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.USER,
+        )
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL,
+            defaults={"cupos": 5, "precio_turno": 5000},
+        )
+        # 2026-06-01 es lunes
+        self.turno = Turno.objects.create(
+            actividad=self.actividad, fecha=date(2026, 6, 1), hora=18, cupos=5
+        )
+
+    def _reserva(self, *, estado_pago=Reserva.EstadoPago.PENDIENTE, abonado=None, turno=None):
+        return Reserva.objects.create(
+            usuario=self.usuario,
+            turno=turno or self.turno,
+            estado=Reserva.Estado.CONFIRMADA,
+            estado_pago=estado_pago,
+            precio_abonado=abonado,
+        )
+
+    def _html(self, msg):
+        """Devuelve el cuerpo HTML de la alternativa del mail."""
+        return msg.alternatives[0][0]
+
+    def test_comprobante_turno_unico_pagado(self):
+        from django.core import mail
+        from apps.turnos.notificaciones import enviar_comprobante_reserva
+
+        reserva = self._reserva(estado_pago=Reserva.EstadoPago.PAGADO, abonado=Decimal("5000.00"))
+        enviado = enviar_comprobante_reserva(
+            self.usuario, reserva, referencia="PG-ABC123", tipo_pago="total"
+        )
+
+        self.assertTrue(enviado)
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertEqual(msg.to, ["cliente@test.com"])
+        self.assertEqual(msg.subject, "Comprobante de pago - Club360")
+        # Tiene alternativa HTML
+        self.assertTrue(msg.alternatives)
+        self.assertEqual(msg.alternatives[0][1], "text/html")
+        html = self._html(msg)
+        self.assertIn("Comprobante de pago", html)
+        self.assertIn("Pagado", html)
+        self.assertIn("PG-ABC123", html)
+        self.assertIn("18:00", html)
+
+    def test_comprobante_senado_muestra_saldo(self):
+        from django.core import mail
+        from apps.turnos.notificaciones import enviar_comprobante_reserva
+
+        # Seña 50% de 5000 = 2500, saldo 2500
+        reserva = self._reserva(estado_pago=Reserva.EstadoPago.SENADO, abonado=Decimal("2500.00"))
+        enviado = enviar_comprobante_reserva(
+            self.usuario, reserva, referencia="PG-SENA1", tipo_pago="sena"
+        )
+
+        self.assertTrue(enviado)
+        msg = mail.outbox[0]
+        self.assertEqual(msg.subject, "Comprobante de seña - Club360")
+        html = self._html(msg)
+        self.assertIn("Comprobante de seña", html)
+        self.assertIn("Señado", html)
+        self.assertIn("Saldo pendiente", html)
+        self.assertIn("2500", html)  # saldo
+        self.assertIn("Saldo pend.", msg.body)  # versión texto
+
+    def test_comprobante_abono_un_solo_mail(self):
+        from django.core import mail
+        from apps.turnos.notificaciones import enviar_comprobante_reserva
+
+        turno2 = Turno.objects.create(
+            actividad=self.actividad, fecha=date(2026, 6, 8), hora=18, cupos=5
+        )
+        r1 = self._reserva(estado_pago=Reserva.EstadoPago.PAGADO, abonado=Decimal("4500.00"))
+        r2 = self._reserva(estado_pago=Reserva.EstadoPago.PAGADO, abonado=Decimal("4500.00"), turno=turno2)
+
+        enviado = enviar_comprobante_reserva(
+            self.usuario, [r1, r2], referencia="PG-XYZ", tipo_pago="total"
+        )
+
+        self.assertTrue(enviado)
+        self.assertEqual(len(mail.outbox), 1)  # un solo mail por registración
+        self.assertIn("Abono mensual", self._html(mail.outbox[0]))
+
+    def test_comprobante_pendiente_sin_pago(self):
+        from django.core import mail
+        from apps.turnos.notificaciones import enviar_comprobante_reserva
+
+        reserva = self._reserva(estado_pago=Reserva.EstadoPago.PENDIENTE, abonado=None)
+        enviar_comprobante_reserva(self.usuario, reserva)
+
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertEqual(msg.subject, "Comprobante de reserva - Club360")
+        self.assertIn("Pago pendiente", self._html(msg))
+        self.assertIn("Pago pendiente", msg.body)
+
+    def test_sin_email_no_envia(self):
+        from django.core import mail
+        from apps.turnos.notificaciones import enviar_comprobante_reserva
+
+        self.usuario.email = ""
+        reserva = self._reserva(estado_pago=Reserva.EstadoPago.PAGADO, abonado=Decimal("5000.00"))
+        enviado = enviar_comprobante_reserva(self.usuario, reserva)
+
+        self.assertFalse(enviado)
+        self.assertEqual(len(mail.outbox), 0)
