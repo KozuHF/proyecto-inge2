@@ -60,9 +60,14 @@
               Abono del 16 en adelante: incluye 20&nbsp;% de descuento. Solo pago total.
             </div>
             {% endif %}
+          {% elif es_varios and permite_pagar_mas_tarde %}
+            <div class="px-4 py-3 text-xs text-amber-800 bg-amber-50">
+              Incluye clases del 1 al 10: el abono debe estar pagado en su totalidad antes del día 11 del mes
+              (hasta el día 10 a las 23:59). Podés pagar ahora o más tarde desde Mis reservas.
+            </div>
           {% elif es_varios %}
             <div class="px-4 py-3 text-xs text-amber-800 bg-amber-50">
-              Incluye turnos del 1 al 15: el abono debe estar pagado antes del día 11 del mes.
+              Solo pago total. Confirmá el pago para registrar tu abono mensual.
             </div>
           {% endif %}
           <div class="flex justify-between px-4 py-3">
@@ -82,8 +87,10 @@
             <div class="px-4 py-3 text-sm text-amber-900 bg-amber-50" role="alert">{{ aviso_sin_beneficio }}</div>
           {% elif grupo.tiene_descuento %}
             <div class="px-4 py-3 text-xs text-green-800 bg-green-50">20&nbsp;% de descuento aplicado al abono.</div>
-          {% elif grupo.permite_pago_sena %}
-            <div class="px-4 py-3 text-xs text-amber-800 bg-amber-50">Pagá el total antes del día 11 del mes.</div>
+          {% elif grupo.incluye_turnos_dia_1_a_10 and not grupo.esta_pagado_grupo %}
+            <div class="px-4 py-3 text-xs text-amber-800 bg-amber-50">
+              Pagá el total antes del día 11 del mes (hasta el día 10 a las 23:59).
+            </div>
           {% endif %}
           <div class="flex justify-between px-4 py-3">
             <span class="text-gray-500">Total del abono</span>
@@ -232,36 +239,45 @@
         {% endif %}
 
         <p id="ayuda-tarjeta" class="text-xs text-gray-500 mt-3">
-          Completá el pago con tarjeta solo si no queda cubierto con créditos. CVV de prueba: 123.
+          Completá el pago con tarjeta solo si no queda cubierto con créditos.
         </p>
         </div>
 
         <p id="ayuda-solo-creditos" class="hidden text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
           El total queda cubierto con tus créditos. No se realizará ningún cargo con tarjeta.
         </p>
-
-        <div class="flex gap-3 pt-2">
-          {% if es_checkout %}
-            <a href="{% if es_varios %}{% url 'turnos:paso_seleccion_fechas' %}{% else %}{% url 'turnos:paso_confirmar' %}{% endif %}"
-               class="flex-1 text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
-              ← Volver
-            </a>
-            <a href="{% url 'pagos:cancelar_checkout' %}"
-               class="flex-1 text-center border border-red-200 text-red-700 hover:bg-red-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
-              Cancelar
-            </a>
-          {% else %}
-            <a href="{% url 'turnos:mis_reservas' %}"
-               class="flex-1 text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
-              Cancelar
-            </a>
-          {% endif %}
-          <button type="submit" id="btn-confirmar"
-                  class="flex-1 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
-            Confirmar pago
-          </button>
-        </div>
       </form>
+
+      <div class="flex flex-wrap gap-3 pt-2">
+        {% if es_checkout %}
+          <a href="{% if es_varios %}{% url 'turnos:paso_seleccion_fechas' %}{% else %}{% url 'turnos:paso_confirmar' %}{% endif %}"
+             class="flex-1 min-w-[8rem] text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
+            ← Volver
+          </a>
+          <a href="{% url 'pagos:cancelar_checkout' %}"
+             class="flex-1 min-w-[8rem] text-center border border-red-200 text-red-700 hover:bg-red-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
+            Cancelar
+          </a>
+        {% else %}
+          <a href="{% url 'turnos:mis_reservas' %}"
+             class="flex-1 min-w-[8rem] text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
+            Cancelar
+          </a>
+        {% endif %}
+        {% if es_checkout and es_varios and permite_pagar_mas_tarde %}
+          <form id="form-pagar-mas-tarde" method="post" action="{% url 'pagos:pagar_mas_tarde' %}" class="flex-1 min-w-[8rem]">
+            {% csrf_token %}
+            <button type="submit"
+                    class="w-full border border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 font-semibold rounded-lg text-sm px-5 py-3 transition">
+              Pagar más tarde
+            </button>
+          </form>
+        {% endif %}
+        <button type="submit" id="btn-confirmar" form="form-pago"
+                class="flex-1 min-w-[8rem] text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
+          Confirmar pago
+        </button>
+      </div>
     </div>
 
   </div>

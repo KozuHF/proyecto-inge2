@@ -17,11 +17,7 @@ from apps.actividades.models import Actividad
 from apps.creditos import services as creditos_services
 from apps.creditos.services import ContextoPagoCreditos
 from apps.turnos import services as turnos_services
-from apps.turnos.abono_mensual import (
-    clasificar_regla_abono,
-    permite_pago_sena,
-    requiere_pago_antes_dia_11,
-)
+from apps.turnos.abono_mensual import permite_pagar_mas_tarde
 from apps.turnos.models import (
     GrupoReservaMensual,
     MODO_TURNO_UNICO,
@@ -65,6 +61,7 @@ class DatosCheckout:
     fechas_seleccionadas: list[date_type] | None = None
     regla_cobro: str | None = None
     permite_sena: bool = True
+    permite_pagar_mas_tarde: bool = False
 
 
 def normalizar_numero_tarjeta(numero: str) -> str:
@@ -121,6 +118,10 @@ def datos_desde_wizard(wizard: dict, usuario=None) -> DatosCheckout:
             actividad, fechas_sel, usuario=usuario, anio=fecha.year, mes=fecha.month
         )
 
+    permite_mas_tarde = False
+    if modo == MODO_VARIOS_TURNOS and fechas_sel:
+        permite_mas_tarde = permite_pagar_mas_tarde(fechas_sel)
+
     return DatosCheckout(
         actividad=actividad,
         fecha=fecha,
@@ -130,7 +131,8 @@ def datos_desde_wizard(wizard: dict, usuario=None) -> DatosCheckout:
         cantidad_turnos=cantidad,
         fechas_seleccionadas=fechas_sel,
         regla_cobro=regla_cobro,
-        permite_sena=permite_pago_sena(regla_cobro) if regla_cobro else True,
+        permite_sena=False if modo == MODO_VARIOS_TURNOS else True,
+        permite_pagar_mas_tarde=permite_mas_tarde,
     )
 
 
@@ -196,7 +198,7 @@ def obtener_grupo_pagable(usuario, grupo_id: int) -> GrupoReservaMensual:
     if not grupo.cantidad_turnos_activos:
         raise ValidationError(_("Este abono mensual no tiene turnos activos."))
 
-    if requiere_pago_antes_dia_11(grupo.regla_cobro) and turnos_services.aplicar_sancion_plazo_vencido(grupo):
+    if grupo.incluye_turnos_dia_1_a_10 and turnos_services.aplicar_sancion_plazo_vencido(grupo):
         raise ValidationError(
             _("El plazo de pago venció el día 11. Se cancelaron los turnos y tu cuenta fue suspendida.")
         )
@@ -420,6 +422,8 @@ def procesar_pago_y_reservar(
     datos = datos_desde_wizard(wizard, usuario)
     if not turnos_services.usuario_puede_reservar(usuario):
         raise ValidationError(_("Tu cuenta está suspendida. No podés realizar reservas."))
+    if datos.modo == MODO_VARIOS_TURNOS and tipo_pago == TIPO_SENA:
+        raise ValidationError(_("Los abonos mensuales solo admiten pago total."))
     monto_cobro = calcular_monto_cobro_nueva(datos, tipo_pago)
     ctx = creditos_services.contexto_desde_checkout(usuario, datos)
     monto_tarjeta, descuento, creditos_efectivos = _preparar_cobro_con_creditos(
@@ -507,6 +511,29 @@ def procesar_pago_y_reservar(
 
 
 @transaction.atomic
+def reservar_desde_wizard_sin_pago(usuario, wizard: dict) -> GrupoReservaMensual:
+    """
+    Crea el abono mensual sin cobro (pago pendiente).
+    Solo si el abono incluye clases entre el día 1 y el 10 del mes.
+    """
+    datos = datos_desde_wizard(wizard, usuario)
+    if datos.modo != MODO_VARIOS_TURNOS:
+        raise ValidationError(_("Esta opción solo está disponible para abonos mensuales."))
+    if not datos.permite_pagar_mas_tarde:
+        raise ValidationError(_("Debés abonar el abono para confirmar la reserva."))
+    if not turnos_services.usuario_puede_reservar(usuario):
+        raise ValidationError(_("Tu cuenta está suspendida. No podés realizar reservas."))
+
+    return turnos_services.reservar_varios_turnos(
+        usuario,
+        datos.actividad,
+        datos.hora,
+        datos.fechas_seleccionadas,
+        datos.fecha,
+    )
+
+
+@transaction.atomic
 def procesar_pago_reserva(
     usuario,
     reserva_id: int,
@@ -577,6 +604,8 @@ def procesar_pago_grupo(
 ) -> ResultadoPago:
     """Paga o completa el saldo de todas las reservas activas del abono mensual."""
     grupo = obtener_grupo_pagable(usuario, grupo_id)
+    if tipo_pago == TIPO_SENA:
+        raise ValidationError(_("Los abonos mensuales solo admiten pago total."))
     monto_cobro = calcular_monto_cobro_grupo(grupo, tipo_pago)
     ctx = creditos_services.contexto_desde_grupo(usuario, grupo)
     monto_tarjeta, descuento, creditos_efectivos = _preparar_cobro_con_creditos(
