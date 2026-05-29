@@ -27,6 +27,20 @@ def validar_mayor_de_edad(fecha_nacimiento):
         )
 
 
+def validar_dni(nro_documento):
+    """
+    Valida que el DNI tenga exactamente 8 números.
+    """
+    if not nro_documento:
+        raise ValidationError(_("El número de documento es obligatorio."))
+    # Eliminar posibles espacios en blanco
+    doc_str = str(nro_documento).strip()
+    if len(doc_str) != 8 or not doc_str.isdigit():
+        raise ValidationError(
+            _("El número de documento (DNI) debe contener exactamente 8 números.")
+        )
+
+
 class UsuarioManager(BaseUserManager):
     """
     Manager personalizado para el modelo Usuario.
@@ -97,6 +111,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         max_length=20,
         unique=True,
         verbose_name=_("Número de documento"),
+        validators=[validar_dni],
     )
     email = models.EmailField(
         unique=True,

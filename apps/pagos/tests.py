@@ -117,3 +117,25 @@ class TarjetaPagoFormCreditosTestCase(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("cvv", form.errors)
+
+
+class CardValidationAndPaymentTestCase(TestCase):
+    def test_any_16_digit_card_is_valid(self):
+        from apps.pagos import tarjetas
+        # A completely random 16 digit card should be valid
+        numero_valido = "4556123456789012"
+        self.assertEqual(tarjetas.validar_numero_tarjeta_campo(numero_valido), numero_valido)
+
+    def test_invalid_length_card_is_rejected(self):
+        from apps.pagos import tarjetas
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            tarjetas.validar_numero_tarjeta_campo("1234567890")
+
+    def test_no_funds_card_still_has_no_funds(self):
+        from apps.pagos import tarjetas
+        self.assertFalse(tarjetas.pan_tiene_fondos("1509200001061970"))
+
+    def test_other_cards_have_funds(self):
+        from apps.pagos import tarjetas
+        self.assertTrue(tarjetas.pan_tiene_fondos("4556123456789012"))

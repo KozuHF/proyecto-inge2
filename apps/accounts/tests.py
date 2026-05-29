@@ -137,3 +137,72 @@ class EmployeeCreationFormTest(TestCase):
             "El usuario debe tener al menos 18 años para registrarse. Acercarse a la sede con un adulto responsable para el registro."
         )
 
+
+class DNIValidationTest(TestCase):
+    def test_dni_exactly_8_digits_valid(self):
+        from apps.accounts.forms import UsuarioCreacionForm
+        from datetime import date
+        form = UsuarioCreacionForm(data={
+            "nombre": "Pedro",
+            "apellido": "Gómez",
+            "nro_documento": "12345678", # 8 digits - Valid
+            "email": "pedro@test.com",
+            "fecha_nacimiento": date(1990, 1, 1).strftime("%Y-%m-%d"),
+            "password1": "Password123!",
+            "password2": "Password123!",
+            "acepta_sin_impedimentos": True
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_dni_less_than_8_digits_invalid(self):
+        from apps.accounts.forms import UsuarioCreacionForm
+        from datetime import date
+        form = UsuarioCreacionForm(data={
+            "nombre": "Pedro",
+            "apellido": "Gómez",
+            "nro_documento": "1234567", # 7 digits - Invalid
+            "email": "pedro@test.com",
+            "fecha_nacimiento": date(1990, 1, 1).strftime("%Y-%m-%d"),
+            "password1": "Password123!",
+            "password2": "Password123!",
+            "acepta_sin_impedimentos": True
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("nro_documento", form.errors)
+        self.assertEqual(
+            form.errors["nro_documento"][0],
+            "El número de documento (DNI) debe contener exactamente 8 números."
+        )
+
+    def test_dni_more_than_8_digits_invalid(self):
+        from apps.accounts.forms import UsuarioCreacionForm
+        from datetime import date
+        form = UsuarioCreacionForm(data={
+            "nombre": "Pedro",
+            "apellido": "Gómez",
+            "nro_documento": "123456789", # 9 digits - Invalid
+            "email": "pedro@test.com",
+            "fecha_nacimiento": date(1990, 1, 1).strftime("%Y-%m-%d"),
+            "password1": "Password123!",
+            "password2": "Password123!",
+            "acepta_sin_impedimentos": True
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("nro_documento", form.errors)
+
+    def test_dni_non_numeric_invalid(self):
+        from apps.accounts.forms import UsuarioCreacionForm
+        from datetime import date
+        form = UsuarioCreacionForm(data={
+            "nombre": "Pedro",
+            "apellido": "Gómez",
+            "nro_documento": "1234567A", # Non-numeric - Invalid
+            "email": "pedro@test.com",
+            "fecha_nacimiento": date(1990, 1, 1).strftime("%Y-%m-%d"),
+            "password1": "Password123!",
+            "password2": "Password123!",
+            "acepta_sin_impedimentos": True
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("nro_documento", form.errors)
+

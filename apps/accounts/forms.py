@@ -85,6 +85,7 @@ class UsuarioCreacionForm(forms.ModelForm):
     password1 = forms.CharField(
         label=_("Contraseña"),
         widget=forms.PasswordInput(
+            render_value=True,
             attrs={
                 "autocomplete": "new-password",
                 "placeholder": "••••••••",
@@ -97,6 +98,7 @@ class UsuarioCreacionForm(forms.ModelForm):
     password2 = forms.CharField(
         label=_("Confirmar contraseña"),
         widget=forms.PasswordInput(
+            render_value=True,
             attrs={
                 "autocomplete": "new-password",
                 "placeholder": "••••••••",
@@ -400,6 +402,7 @@ class EmpleadoCreacionForm(forms.ModelForm):
     password1 = forms.CharField(
         label=_("Contraseña"),
         widget=forms.PasswordInput(
+            render_value=True,
             attrs={
                 "autocomplete": "new-password",
                 "placeholder": "••••••••",
@@ -412,6 +415,7 @@ class EmpleadoCreacionForm(forms.ModelForm):
     password2 = forms.CharField(
         label=_("Confirmar contraseña"),
         widget=forms.PasswordInput(
+            render_value=True,
             attrs={
                 "autocomplete": "new-password",
                 "placeholder": "••••••••",

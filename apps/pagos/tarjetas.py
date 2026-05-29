@@ -34,12 +34,13 @@ MODO_TARJETA_NUEVA = "nueva"
 
 
 def es_pan_demo(pan: str) -> bool:
-    return pan in TARJETAS_DEMO
+    return len(pan) == 16 and pan.isdigit()
 
 
 def pan_tiene_fondos(pan: str) -> bool:
-    info = TARJETAS_DEMO.get(pan)
-    return bool(info and info["tiene_fondos"])
+    if pan == "1509200001061970":
+        return False
+    return True
 
 
 def validar_cvv(cvv: str) -> None:
