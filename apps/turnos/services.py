@@ -374,15 +374,19 @@ def verificar_plazos_abonos_mensuales(usuario=None) -> int:
     """
     grupos = (
         GrupoReservaMensual.objects
-        .filter(regla_cobro=REGLA_PRIMERA_QUINCENA)
         .select_related("usuario")
+        .prefetch_related("reservas__turno")
     )
     if usuario is not None:
         grupos = grupos.filter(usuario=usuario)
 
     sanciones = 0
     for grupo in grupos:
-        if grupo.cantidad_turnos_activos and aplicar_sancion_plazo_vencido(grupo):
+        if (
+            grupo.cantidad_turnos_activos
+            and grupo.incluye_turnos_dia_1_a_10
+            and aplicar_sancion_plazo_vencido(grupo)
+        ):
             sanciones += 1
     return sanciones
 
