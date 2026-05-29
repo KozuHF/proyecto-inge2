@@ -1,0 +1,31 @@
+{% autoescape off %}Hola{% if usuario.get_short_name %}, {{ usuario.get_short_name }}{% endif %}:
+
+{% if es_pendiente %}Tu reserva fue registrada. Te dejamos el comprobante (pago pendiente):{% elif es_senado %}Registramos la seña de tu reserva. Te dejamos el comprobante:{% else %}¡Pago confirmado! Te dejamos el comprobante de tu reserva:{% endif %}
+
+=========================================
+   {{ titulo|upper }}{% if es_abono %} (ABONO MENSUAL){% endif %}
+=========================================
+Estado : {{ badge_label }}
+
+{% if es_abono %}Actividad : {{ reservas.0.actividad }}
+Turnos    : {{ cantidad }}
+{% for r in reservas %}
+  {{ forloop.counter }}) {{ r.dia_semana }} {{ r.fecha }} - {{ r.hora }} hs - {{ r.estado }}{% endfor %}
+{% else %}{% with r=reservas.0 %}Actividad : {{ r.actividad }}
+Día       : {{ r.dia_semana }} {{ r.fecha }}
+Horario   : {{ r.hora }} hs
+Reserva   : {{ r.estado }}{% endwith %}
+{% endif %}
+-----------------------------------------
+Detalle de pago
+{% if es_pendiente %}  Total a abonar : ${{ monto_total }}
+  Estado         : Pago pendiente{% elif es_senado %}  Total        : ${{ monto_total }}
+  Seña abonada : ${{ monto_abonado }}
+  Saldo pend.  : ${{ monto_saldo }}{% if referencia %}
+  Referencia   : {{ referencia }}{% endif %}{% else %}  Total      : ${{ monto_total }}{% if referencia %}
+  Referencia : {{ referencia }}{% endif %}{% endif %}
+=========================================
+
+Gracias por elegir Club360.
+El equipo de Club360
+{% endautoescape %}

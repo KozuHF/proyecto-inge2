@@ -168,7 +168,7 @@ class UsuarioCreacionForm(forms.ModelForm):
         return p2
 
     def clean_email(self):
-        email = self.cleaned_data.get("email")
+        email = _normalizar_email(self.cleaned_data.get("email"))
         if email and _email_en_uso(email):
             raise ValidationError(_("Este correo ya se encuentra en uso."))
         return email
@@ -187,6 +187,11 @@ class UsuarioCreacionForm(forms.ModelForm):
         if commit:
             usuario.save()
         return usuario
+
+
+def _normalizar_email(email):
+    """Estandariza el email a minúsculas y sin espacios."""
+    return email.strip().lower() if email else email
 
 
 def _email_en_uso(email, excluir_pk=None):
@@ -215,7 +220,7 @@ class UsuarioPerfilForm(forms.ModelForm):
         }
 
     def clean_email(self):
-        email = self.cleaned_data.get("email")
+        email = _normalizar_email(self.cleaned_data.get("email"))
         if email and _email_en_uso(email, excluir_pk=self.instance.pk):
             raise ValidationError(_("Este correo ya se encuentra en uso."))
         return email
@@ -258,7 +263,7 @@ class UsuarioModificacionForm(forms.ModelForm):
         }
 
     def clean_email(self):
-        email = self.cleaned_data.get("email")
+        email = _normalizar_email(self.cleaned_data.get("email"))
         if email and _email_en_uso(email, excluir_pk=self.instance.pk):
             raise ValidationError(_("Este correo ya se encuentra en uso."))
         return email
@@ -473,7 +478,7 @@ class EmpleadoCreacionForm(forms.ModelForm):
         return p2
 
     def clean_email(self):
-        email = self.cleaned_data.get("email")
+        email = _normalizar_email(self.cleaned_data.get("email"))
         if email and _email_en_uso(email):
             raise ValidationError(_("Este correo ya se encuentra en uso."))
         return email

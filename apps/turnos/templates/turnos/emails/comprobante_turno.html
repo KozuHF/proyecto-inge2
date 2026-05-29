@@ -1,0 +1,131 @@
+{% autoescape off %}<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ titulo }}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f3f4f6; font-family:Arial, Helvetica, sans-serif; color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:600px; background-color:#ffffff; border-radius:16px; overflow:hidden; border:1px solid #e5e7eb;">
+
+          <!-- Encabezado -->
+          <tr>
+            <td style="background-color:{{ color_marca }}; padding:24px 32px;">
+              <span style="font-size:22px; font-weight:bold; color:#ffffff; letter-spacing:0.5px;">Club360</span>
+            </td>
+          </tr>
+
+          <!-- Título + badge -->
+          <tr>
+            <td style="padding:28px 32px 8px 32px;">
+              <h1 style="margin:0 0 6px 0; font-size:20px; color:#111827;">{{ titulo }}{% if es_abono %} <span style="font-weight:normal; color:#6b7280;">— Abono mensual</span>{% endif %}</h1>
+              <p style="margin:0 0 14px 0; font-size:14px; color:#6b7280;">
+                Hola{% if usuario.get_short_name %}, {{ usuario.get_short_name }}{% endif %}.
+                {% if es_pendiente %}Tu reserva quedó registrada con pago pendiente.{% elif es_senado %}Registramos la seña de tu reserva.{% else %}¡Tu pago fue confirmado!{% endif %}
+              </p>
+              <span style="display:inline-block; background-color:{{ badge_color }}; color:#ffffff; font-size:12px; font-weight:bold; padding:5px 12px; border-radius:9999px; text-transform:uppercase; letter-spacing:0.4px;">{{ badge_label }}</span>
+            </td>
+          </tr>
+
+          <!-- Detalle del/los turno(s) -->
+          <tr>
+            <td style="padding:18px 32px 4px 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb; border-radius:12px; border-collapse:separate;">
+                {% if es_abono %}
+                <tr>
+                  <td colspan="2" style="padding:12px 16px; border-bottom:1px solid #e5e7eb; font-size:13px; color:#6b7280;">
+                    <strong style="color:#111827;">{{ reservas.0.actividad }}</strong> — {{ cantidad }} turnos
+                  </td>
+                </tr>
+                {% for r in reservas %}
+                <tr>
+                  <td style="padding:10px 16px; {% if not forloop.last %}border-bottom:1px solid #f3f4f6;{% endif %} font-size:14px; color:#111827;">
+                    {{ r.dia_semana }} {{ r.fecha }} — {{ r.hora }} hs
+                  </td>
+                  <td align="right" style="padding:10px 16px; {% if not forloop.last %}border-bottom:1px solid #f3f4f6;{% endif %} font-size:13px; color:#6b7280;">
+                    {{ r.estado }}
+                  </td>
+                </tr>
+                {% endfor %}
+                {% else %}{% with r=reservas.0 %}
+                <tr>
+                  <td style="padding:12px 16px; border-bottom:1px solid #f3f4f6; font-size:13px; color:#6b7280;">Actividad</td>
+                  <td align="right" style="padding:12px 16px; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; color:#111827;">{{ r.actividad }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 16px; border-bottom:1px solid #f3f4f6; font-size:13px; color:#6b7280;">Día</td>
+                  <td align="right" style="padding:12px 16px; border-bottom:1px solid #f3f4f6; font-size:14px; color:#111827;">{{ r.dia_semana }} {{ r.fecha }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 16px; border-bottom:1px solid #f3f4f6; font-size:13px; color:#6b7280;">Horario</td>
+                  <td align="right" style="padding:12px 16px; border-bottom:1px solid #f3f4f6; font-size:14px; color:#111827;">{{ r.hora }} hs</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 16px; font-size:13px; color:#6b7280;">Reserva</td>
+                  <td align="right" style="padding:12px 16px; font-size:14px; color:#111827;">{{ r.estado }}</td>
+                </tr>
+                {% endwith %}{% endif %}
+              </table>
+            </td>
+          </tr>
+
+          <!-- Resumen de pago -->
+          <tr>
+            <td style="padding:18px 32px 8px 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb; border-radius:12px;">
+                <tr>
+                  <td style="padding:14px 16px 4px 16px; font-size:13px; font-weight:bold; color:#374151; text-transform:uppercase; letter-spacing:0.4px;">Detalle de pago</td>
+                </tr>
+                {% if es_pendiente %}
+                <tr>
+                  <td style="padding:6px 16px; font-size:14px; color:#111827;">
+                    <table role="presentation" width="100%"><tr>
+                      <td style="font-size:14px; color:#6b7280;">Total a abonar</td>
+                      <td align="right" style="font-size:16px; font-weight:bold; color:#111827;">${{ monto_total }}</td>
+                    </tr></table>
+                  </td>
+                </tr>
+                <tr><td style="padding:4px 16px 16px 16px; font-size:13px; color:#6b7280;">Pago pendiente. Podés abonarlo desde "Mis reservas".</td></tr>
+                {% elif es_senado %}
+                <tr><td style="padding:4px 16px; font-size:14px;"><table role="presentation" width="100%"><tr>
+                  <td style="font-size:14px; color:#6b7280;">Total</td>
+                  <td align="right" style="font-size:14px; color:#111827;">${{ monto_total }}</td>
+                </tr></table></td></tr>
+                <tr><td style="padding:4px 16px; font-size:14px;"><table role="presentation" width="100%"><tr>
+                  <td style="font-size:14px; color:#6b7280;">Seña abonada</td>
+                  <td align="right" style="font-size:14px; color:#111827;">${{ monto_abonado }}</td>
+                </tr></table></td></tr>
+                <tr><td style="padding:4px 16px 12px 16px; font-size:14px; border-top:1px solid #e5e7eb;"><table role="presentation" width="100%"><tr>
+                  <td style="font-size:14px; font-weight:bold; color:#d97706;">Saldo pendiente</td>
+                  <td align="right" style="font-size:16px; font-weight:bold; color:#d97706;">${{ monto_saldo }}</td>
+                </tr></table></td></tr>
+                {% if referencia %}<tr><td style="padding:0 16px 14px 16px; font-size:12px; color:#9ca3af;">Referencia: {{ referencia }}</td></tr>{% endif %}
+                {% else %}
+                <tr><td style="padding:6px 16px; font-size:14px;"><table role="presentation" width="100%"><tr>
+                  <td style="font-size:14px; color:#6b7280;">Total</td>
+                  <td align="right" style="font-size:16px; font-weight:bold; color:#16a34a;">${{ monto_total }}</td>
+                </tr></table></td></tr>
+                {% if referencia %}<tr><td style="padding:0 16px 14px 16px; font-size:12px; color:#9ca3af;">Referencia: {{ referencia }}</td></tr>{% endif %}
+                {% endif %}
+              </table>
+            </td>
+          </tr>
+
+          <!-- Pie -->
+          <tr>
+            <td style="padding:20px 32px 28px 32px; border-top:1px solid #f3f4f6;">
+              <p style="margin:0; font-size:13px; color:#6b7280;">Gracias por elegir Club360.</p>
+              <p style="margin:4px 0 0 0; font-size:13px; color:#9ca3af;">Este es un correo automático, no respondas a esta dirección.</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+{% endautoescape %}

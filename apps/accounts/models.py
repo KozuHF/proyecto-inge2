@@ -53,7 +53,7 @@ class UsuarioManager(BaseUserManager):
         if not nro_documento:
             raise ValueError(_("El número de documento es obligatorio."))
 
-        email = self.normalize_email(email)
+        email = self.normalize_email(email).strip().lower()
 
         # Validar mayoría de edad antes de crear
         validar_mayor_de_edad(fecha_nacimiento)
@@ -148,6 +148,14 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         verbose_name = _("Usuario")
         verbose_name_plural = _("Usuarios")
         ordering = ["apellido", "nombre"]
+
+    def save(self, *args, **kwargs):
+        # El email se estandariza siempre en minúsculas: fuente de verdad única
+        # para formularios, admin, shell y manager. La unicidad case-insensitive
+        # se valida además en los formularios con email__iexact.
+        if self.email:
+            self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.nombre} {self.apellido} <{self.email}>"

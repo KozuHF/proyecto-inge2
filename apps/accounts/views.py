@@ -217,7 +217,7 @@ def editar_usuario(request, pk):
     creditos_resumen = None
     tarjeta_guardada = None
     aviso_penalidad = None
-    if es_propio_perfil:
+    if es_propio_perfil and usuario.rol == Roles.USER:
         from apps.creditos.services import resumen_creditos_usuario
         from apps.pagos import tarjetas as tarjetas_svc
         from apps.turnos.penalidad_cancelaciones import aviso_penalidad_en_cuenta

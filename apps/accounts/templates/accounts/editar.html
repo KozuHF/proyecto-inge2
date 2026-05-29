@@ -50,7 +50,7 @@
             </div>
             {% endif %}
 
-            {% if es_propio_perfil %}
+            {% if es_propio_perfil and usuario.rol == 'user' %}
             <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
                     <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Número de documento</p>

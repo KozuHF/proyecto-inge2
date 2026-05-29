@@ -16,6 +16,7 @@ from django.utils.translation import gettext_lazy as _
 from apps.actividades.models import Actividad
 from apps.creditos import services as creditos_services
 from apps.creditos.services import ContextoPagoCreditos
+from apps.turnos import notificaciones
 from apps.turnos import services as turnos_services
 from apps.turnos.abono_mensual import permite_pagar_mas_tarde
 from apps.turnos.models import (
@@ -501,6 +502,14 @@ def procesar_pago_y_reservar(
         creditos_usados=creditos_efectivos,
     )
 
+    if datos.modo == MODO_VARIOS_TURNOS:
+        reservas_comprobante = reservas
+    else:
+        reservas_comprobante = reserva_principal
+    notificaciones.enviar_comprobante_reserva(
+        usuario, reservas_comprobante, referencia=referencia, tipo_pago=tipo_pago, monto_pagado=monto_tarjeta
+    )
+
     return ResultadoPago(
         exito=True,
         pago=None,
@@ -524,13 +533,18 @@ def reservar_desde_wizard_sin_pago(usuario, wizard: dict) -> GrupoReservaMensual
     if not turnos_services.usuario_puede_reservar(usuario):
         raise ValidationError(_("Tu cuenta está suspendida. No podés realizar reservas."))
 
-    return turnos_services.reservar_varios_turnos(
+    grupo = turnos_services.reservar_varios_turnos(
         usuario,
         datos.actividad,
         datos.hora,
         datos.fechas_seleccionadas,
         datos.fecha,
     )
+
+    reservas = list(grupo.reservas.select_related("turno", "turno__actividad"))
+    notificaciones.enviar_comprobante_reserva(usuario, reservas)
+
+    return grupo
 
 
 @transaction.atomic
@@ -578,6 +592,10 @@ def procesar_pago_reserva(
         _aplicar_pago_aprobado(reserva, tipo_pago, monto_cobro, referencia)
     else:
         _aplicar_pago_aprobado(reserva, tipo_pago, reserva.monto_total, referencia)
+
+    notificaciones.enviar_comprobante_reserva(
+        usuario, reserva, referencia=referencia, tipo_pago=tipo_pago, monto_pagado=monto_tarjeta
+    )
 
     return ResultadoPago(
         exito=True,
@@ -640,6 +658,10 @@ def procesar_pago_grupo(
         referencia=referencia,
         ultimos_4=ultimos,
         creditos_usados=creditos_efectivos,
+    )
+
+    notificaciones.enviar_comprobante_reserva(
+        usuario, reservas, referencia=referencia, tipo_pago=tipo_pago, monto_pagado=monto_tarjeta
     )
 
     extra_cred = ""
