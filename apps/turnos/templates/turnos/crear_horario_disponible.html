@@ -78,19 +78,20 @@
       <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
         {{ form.precio.label }}
       </label>
+      <!-- Campo oculto que se envía en el form; su valor lo fija el backend -->
+      <input type="hidden" name="precio" id="id_precio_hidden" value="1">
+      <!-- Visualización de solo lectura -->
       <div class="relative rounded-lg shadow-sm">
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <span class="text-gray-500 dark:text-gray-400 text-sm">$</span>
+          <span class="text-gray-400 dark:text-gray-500 text-sm font-medium">$</span>
         </div>
-        {% if form.precio.value %}
-          <input type="number" name="precio" value="{{ form.precio.value }}" step="0.01" min="0.01" id="id_precio" style="padding-left: 2rem !important;" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="0.00" required>
-        {% else %}
-          <input type="number" name="precio" step="0.01" min="0.01" id="id_precio" style="padding-left: 2rem !important;" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="0.00" required>
-        {% endif %}
+        <div id="precio_display"
+             style="padding-left: 2rem;"
+             class="bg-gray-100 border border-gray-200 text-gray-500 text-sm rounded-lg block w-full p-2.5 dark:bg-gray-700/50 dark:border-gray-600 dark:text-gray-400 cursor-not-allowed select-none">
+          <span id="precio_valor">— Seleccioná un deporte —</span>
+        </div>
       </div>
-      {% if form.precio.errors %}
-        <p class="mt-1 text-xs text-red-600">{{ form.precio.errors|join:", " }}</p>
-      {% endif %}
+      <p class="mt-1 text-xs text-gray-400 dark:text-gray-500 italic">El precio está definido por el deporte y no puede modificarse aquí.</p>
     </div>
 
     <!-- Activo -->
@@ -123,14 +124,39 @@
 </div>
 
 <script>
+const horarios        = {{ horarios_existentes_json|safe }};
+const turnosExistentes = {{ turnos_por_slot_json|safe }};
+const preciosPorActividad = {{ precios_por_actividad_json|safe }};
+
 document.addEventListener("DOMContentLoaded", () => {
-    const actSelect = document.getElementById("id_actividad");
-    const daySelect = document.getElementById("id_dia_semana");
+    const actSelect  = document.getElementById("id_actividad");
+    const daySelect  = document.getElementById("id_dia_semana");
     const hourSelect = document.getElementById("id_hora");
-    const helpText = document.getElementById("fecha-inicio-ayuda");
-    const horarios = {{ horarios_existentes_json|safe }};
-    const turnosExistentes = {{ turnos_por_slot_json|safe }};
-    const dayNames = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    const helpText   = document.getElementById("fecha-inicio-ayuda");
+    const precioValor   = document.getElementById("precio_valor");
+    const precioHidden  = document.getElementById("id_precio_hidden");
+    const dayNames   = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+    function updatePrecioDisplay() {
+        const actId = actSelect ? actSelect.value : null;
+        if (actId && preciosPorActividad[actId] !== undefined) {
+            const precio = parseFloat(preciosPorActividad[actId]);
+            if (precioValor) {
+                precioValor.textContent = precio.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+            if (precioHidden) {
+                precioHidden.value = preciosPorActividad[actId];
+            }
+        } else {
+            if (precioValor) precioValor.textContent = "— Seleccioná un deporte —";
+            if (precioHidden) precioHidden.value = "1";
+        }
+    }
+
+    if (actSelect) {
+        actSelect.addEventListener("change", updatePrecioDisplay);
+        updatePrecioDisplay();
+    }
 
     if (actSelect && daySelect && hourSelect) {
         // Guardar las opciones originales de hora

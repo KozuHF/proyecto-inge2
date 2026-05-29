@@ -742,11 +742,20 @@ def crear_horario_disponible(request):
 
     turnos_por_slot_json = json.dumps(dict(turnos_por_slot))
 
+    # Mapa de precios predefinidos por actividad (id -> precio)
+    precios_por_actividad = {
+        str(a.id): str(a.precio_turno)
+        for a in Actividad.objects.all()
+    }
+    precios_por_actividad_json = json.dumps(precios_por_actividad)
+
     form = HorarioDisponibleForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         try:
             with transaction.atomic():
                 horario = form.save(commit=False)
+                # Precio siempre fijado por el deporte, no editable por el usuario
+                horario.precio = horario.actividad.precio_turno
                 # Borrar duplicados que no tengan turnos futuros para evitar error de constraint único
                 duplicate = HorarioDisponible.objects.filter(
                     actividad=horario.actividad,
@@ -777,6 +786,7 @@ def crear_horario_disponible(request):
             "form": form,
             "horarios_existentes_json": horarios_existentes_json,
             "turnos_por_slot_json": turnos_por_slot_json,
+            "precios_por_actividad_json": precios_por_actividad_json,
         },
     )
 
