@@ -782,9 +782,7 @@ def crear_horario_disponible(request):
             messages.success(
                 request,
                 _(
-                    "Horario creado: %(horario)s. "
-                    "Se generaron %(creados)d turno(s) "
-                    "(%(omitidos)d fecha(s) omitida(s) por ser feriado o ya existir)."
+                    "Horario creado: %(horario)s."
                 ) % {"horario": horario, "creados": creados, "omitidos": omitidos},
             )
             return redirect("panel_turnos")
