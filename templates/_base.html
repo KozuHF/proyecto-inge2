@@ -75,12 +75,14 @@
                             <a href="/#deportes" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Deportes</a>
                         </li>
                         {% if user.is_authenticated %}
+                        {% if user.rol == 'user' %}
                         <li>
                             <a href="{% url 'turnos:paso_tipo_abono' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Reservar turno</a>
                         </li>
                         <li>
                             <a href="{% url 'turnos:mis_reservas' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Mis reservas</a>
                         </li>
+                        {% endif %}
                         {% if user.rol == 'admin' or user.rol == 'employee' %}
                         <li>
                             <a href="{% url 'panel_control' %}" class="block py-2 px-3 text-gray-700 rounded hover:bg-gray-100 md:hover:bg-transparent md:hover:text-green-600 md:p-0">Panel</a>
@@ -134,7 +136,9 @@
                     <ul class="space-y-2 text-sm">
                         <li><a href="{% url 'accounts:login' %}" class="hover:text-green-400 transition">Iniciar sesión</a></li>
                         <li><a href="{% url 'accounts:registro' %}" class="hover:text-green-400 transition">Registrarse</a></li>
+                        {% if not user.is_authenticated or user.rol == 'user' %}
                         <li><a href="{% if user.is_authenticated %}{% url 'turnos:mis_reservas' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="hover:text-green-400 transition">Mis turnos</a></li>
+                        {% endif %}
                         <li><a href="{% url 'contacto' %}" class="hover:text-green-400 transition">Contacto</a></li>
                     </ul>
                 </div>
