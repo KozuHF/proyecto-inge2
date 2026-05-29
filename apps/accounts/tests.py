@@ -137,3 +137,121 @@ class EmployeeCreationFormTest(TestCase):
             "El usuario debe tener al menos 18 años para registrarse. Acercarse a la sede con un adulto responsable para el registro."
         )
 
+
+class EmailNormalizacionTest(TestCase):
+    """El email se estandariza en minúsculas y la unicidad es case-insensitive."""
+
+    def _datos_registro(self, email):
+        return {
+            "nombre": "Ana",
+            "apellido": "Lopez",
+            "nro_documento": "50000001",
+            "email": email,
+            "fecha_nacimiento": "1990-01-01",
+            "password1": "Password123!",
+            "password2": "Password123!",
+            "acepta_sin_impedimentos": True,
+        }
+
+    def test_create_user_normaliza_email(self):
+        usuario = Usuario.objects.create_user(
+            email="Mail@Mail.com",
+            nombre="Ana",
+            apellido="Lopez",
+            nro_documento="50000010",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+        )
+        self.assertEqual(usuario.email, "mail@mail.com")
+
+    def test_save_normaliza_email(self):
+        usuario = Usuario.objects.create_user(
+            email="ana@test.com",
+            nombre="Ana",
+            apellido="Lopez",
+            nro_documento="50000011",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+        )
+        usuario.email = "ANA2@TEST.COM"
+        usuario.save()
+        usuario.refresh_from_db()
+        self.assertEqual(usuario.email, "ana2@test.com")
+
+    def test_registro_duplicado_case_insensitive(self):
+        from apps.accounts.forms import UsuarioCreacionForm
+
+        Usuario.objects.create_user(
+            email="mail@mail.com",
+            nombre="Ana",
+            apellido="Lopez",
+            nro_documento="50000020",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+        )
+        form = UsuarioCreacionForm(data=self._datos_registro("MAIL@MAIL.COM"))
+        self.assertFalse(form.is_valid())
+        self.assertIn("email", form.errors)
+
+    def test_registro_guarda_email_en_minusculas(self):
+        from apps.accounts.forms import UsuarioCreacionForm
+
+        form = UsuarioCreacionForm(data=self._datos_registro("Test@MAIL.com"))
+        self.assertTrue(form.is_valid(), form.errors)
+        usuario = form.save()
+        self.assertEqual(usuario.email, "test@mail.com")
+
+    def test_editar_propio_email_solo_cambia_case(self):
+        from apps.accounts.forms import UsuarioPerfilForm
+
+        usuario = Usuario.objects.create_user(
+            email="cliente@test.com",
+            nombre="Ana",
+            apellido="Lopez",
+            nro_documento="50000030",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+        )
+        form = UsuarioPerfilForm(
+            data={"nombre": "Ana", "apellido": "Lopez", "email": "CLIENTE@test.com"},
+            instance=usuario,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        actualizado = form.save()
+        self.assertEqual(actualizado.email, "cliente@test.com")
+
+
+class MiCuentaNavbarVisibilidadTest(TestCase):
+    """Los botones/datos exclusivos de clientes no se muestran a staff."""
+
+    def setUp(self):
+        self.cliente = Usuario.objects.create_user(
+            email="cli@test.com", nombre="Cli", apellido="Ente",
+            nro_documento="60000001", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.empleado = Usuario.objects.create_user(
+            email="emp@test.com", nombre="Emp", apellido="Leado",
+            nro_documento="60000002", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.EMPLOYEE, is_staff=True,
+        )
+
+    def test_cliente_ve_botones_y_datos(self):
+        # La página "Mi cuenta" incluye el navbar y no tiene CTAs de la home,
+        # así que sirve para verificar navbar + datos en una sola request.
+        self.client.force_login(self.cliente)
+        cuenta = self.client.get(reverse("accounts:editar", kwargs={"pk": self.cliente.pk})).content.decode()
+        self.assertIn("Reservar turno", cuenta)
+        self.assertIn("Mis reservas", cuenta)
+        self.assertIn("Número de documento", cuenta)
+        self.assertIn("Tarjeta de crédito", cuenta)
+
+    def test_staff_no_ve_botones_ni_datos(self):
+        self.client.force_login(self.empleado)
+        cuenta = self.client.get(reverse("accounts:editar", kwargs={"pk": self.empleado.pk})).content.decode()
+        self.assertNotIn("Reservar turno", cuenta)
+        self.assertNotIn("Mis reservas", cuenta)
+        self.assertNotIn("Número de documento", cuenta)
+        self.assertNotIn("Tarjeta de crédito", cuenta)
+        self.assertNotIn("Mis créditos por deporte", cuenta)
+
