@@ -568,6 +568,21 @@ class GrupoReservaMensual(models.Model):
 
         return permite_pago_sena(self.regla_cobro)
 
+    @property
+    def incluye_turnos_dia_1_a_10(self) -> bool:
+        from .abono_mensual import abono_incluye_turnos_dia_1_a_10
+
+        fechas = [r.turno.fecha for r in self.reservas_activas().select_related("turno")]
+        return abono_incluye_turnos_dia_1_a_10(fechas)
+
+    @property
+    def aviso_plazo_pago(self) -> str | None:
+        from .abono_mensual import texto_tiempo_restante_pago
+
+        if not self.incluye_turnos_dia_1_a_10 or self.esta_pagado_grupo:
+            return None
+        return texto_tiempo_restante_pago(self.anio, self.mes)
+
     def __str__(self):
         DIAS = [_("Lunes"), _("Martes"), _("Miércoles"), _("Jueves"), _("Viernes"), _("Sábado")]
         dia_nombre = DIAS[self.dia_semana] if self.dia_semana < 6 else "?"

@@ -4,6 +4,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
+from django.utils.translation import gettext as _
+from django.views.decorators.http import require_POST
 
 from apps.creditos import services as creditos_services
 from apps.turnos.views import _wizard_clear, _wizard_get
@@ -137,6 +139,7 @@ def pagar_wizard(request):
         "paso": 6,
         "modo": datos.modo,
         "aviso_sin_beneficio": aviso_sin_beneficio,
+        "permite_pagar_mas_tarde": datos.permite_pagar_mas_tarde,
         **_ctx_montos_pago(opciones, ctx),
     })
 
@@ -268,6 +271,32 @@ def pagar_grupo(request, grupo_id):
         "aviso_sin_beneficio": aviso_sin_beneficio,
         **_ctx_montos_pago(opciones, ctx),
     })
+
+
+@login_required
+@require_POST
+def pagar_mas_tarde_wizard(request):
+    """Reserva el abono sin cobrar; no valida tarjeta ni CVV."""
+    wizard = _wizard_get(request)
+    if "modo" not in wizard:
+        messages.warning(request, _("Completá los pasos de reserva antes de continuar."))
+        return redirect("turnos:paso_tipo_abono")
+
+    try:
+        grupo = services.reservar_desde_wizard_sin_pago(request.user, wizard)
+    except ValidationError as exc:
+        messages.error(request, exc.message)
+        return redirect("pagos:pagar_wizard")
+
+    _wizard_clear(request)
+    messages.success(
+        request,
+        _(
+            "Reserva confirmada. Pago pendiente. "
+            "Pagá antes del día 11 del mes para evitar una suspensión."
+        ),
+    )
+    return redirect("turnos:mis_reservas")
 
 
 @login_required

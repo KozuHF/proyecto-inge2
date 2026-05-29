@@ -3,13 +3,15 @@ Reglas de negocio para abonos mensuales.
 
 - Si algún turno cae entre el 1 y el 15: pago total obligatorio antes del día 11 del mes;
   si no se cumple, se cancelan los turnos y se suspende al usuario.
+- Si algún turno cae entre el 1 y el 10: se puede «pagar más tarde» hasta el día 10 a las 23:59.
 - Si todos los turnos son del 16 en adelante: 20 % de descuento y solo pago total (sin seña).
 """
-from datetime import date
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
 
 DIA_LIMITE_PAGO_PRIMERA_QUINCENA = 11
 DESCUENTO_SEGUNDA_QUINCENA = Decimal("0.20")
@@ -77,8 +79,57 @@ def monto_total_desde_fechas(
     return total.quantize(Decimal("0.01")), regla, descuento
 
 
+def abono_incluye_turnos_dia_1_a_10(fechas: list[date]) -> bool:
+    """True si el abono tiene al menos una clase entre el día 1 y el 10 del mes."""
+    return any(1 <= f.day <= 10 for f in fechas)
+
+
+def permite_pagar_mas_tarde(fechas: list[date]) -> bool:
+    return abono_incluye_turnos_dia_1_a_10(fechas)
+
+
 def permite_pago_sena(regla_cobro: str) -> bool:
-    return regla_cobro == REGLA_PRIMERA_QUINCENA
+    """Los abonos mensuales no admiten seña; solo turnos individuales."""
+    return False
+
+
+def plazo_pago_limite(anio: int, mes: int) -> datetime:
+    """Último instante para pagar: día 10 del mes a las 23:59:59 (hora local)."""
+    ultimo_dia = date(anio, mes, DIA_LIMITE_PAGO_PRIMERA_QUINCENA - 1)
+    naive = datetime.combine(ultimo_dia, time(23, 59, 59))
+    return timezone.make_aware(naive, timezone.get_current_timezone())
+
+
+def texto_tiempo_restante_pago(anio: int, mes: int) -> str | None:
+    """Texto para avisos en Mis reservas; None si el plazo ya venció."""
+    limite = plazo_pago_limite(anio, mes)
+    ahora = timezone.now()
+    if ahora >= limite:
+        return str(_("El plazo de pago venció. Debías abonar antes del día 11 del mes."))
+
+    delta = limite - ahora
+    dias = delta.days
+    horas = (delta.seconds // 3600) % 24
+    minutos = (delta.seconds // 60) % 60
+
+    if dias > 0:
+        parte_dias = ngettext(
+            "%(count)d día",
+            "%(count)d días",
+            dias,
+        ) % {"count": dias}
+        return str(
+            _("Tenés %(parte)s y %(horas)d h para pagar (hasta el día 10 a las 23:59).")
+        ) % {"parte": parte_dias, "horas": horas}
+
+    if horas > 0:
+        return str(
+            _("Tenés %(horas)d h y %(minutos)d min para pagar (hasta el día 10 a las 23:59).")
+        ) % {"horas": horas, "minutos": minutos}
+
+    return str(
+        _("Tenés %(minutos)d min para pagar (hasta el día 10 a las 23:59).")
+    ) % {"minutos": max(minutos, 1)}
 
 
 def fecha_limite_pago_primera_quincena(anio: int, mes: int) -> date:
@@ -91,15 +142,12 @@ def requiere_pago_antes_dia_11(regla_cobro: str) -> bool:
 
 
 def plazo_pago_vencido(grupo) -> bool:
-    """True si hoy es día 11 o posterior del mes del abono y no está pagado."""
-    if not requiere_pago_antes_dia_11(grupo.regla_cobro):
-        return False
+    """True si pasó el día 10 a las 23:59 del mes del abono y el grupo sigue impago."""
     if grupo.esta_pagado_grupo:
         return False
-    hoy = timezone.now().date()
-    if hoy.year != grupo.anio or hoy.month != grupo.mes:
+    if not grupo.incluye_turnos_dia_1_a_10:
         return False
-    return hoy.day >= DIA_LIMITE_PAGO_PRIMERA_QUINCENA
+    return timezone.now() >= plazo_pago_limite(grupo.anio, grupo.mes)
 
 
 def descripcion_regla(regla_cobro: str, *, con_descuento: bool = True) -> str:
