@@ -48,6 +48,7 @@ class TarjetaAltaForm(forms.Form):
         label=_("CVV"),
         max_length=4,
         widget=forms.PasswordInput(
+            render_value=True,
             attrs={"class": INPUT_TARJETA, "placeholder": "123", "autocomplete": "off"}
         ),
     )

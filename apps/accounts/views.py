@@ -154,23 +154,26 @@ def registro_usuario(request):
     form = UsuarioCreacionForm(request.POST or None)
     tarjeta_form = TarjetaAltaForm(request.POST or None)
 
-    if request.method == "POST" and form.is_valid() and tarjeta_form.is_valid():
-        try:
-            usuario = form.save()
-            tarjetas_svc.guardar_tarjeta(
-                usuario,
-                tarjeta_form.cleaned_data["numero_tarjeta"],
-                tarjeta_form.cleaned_data["titular"],
-                tarjeta_form.cleaned_data["vencimiento"],
-            )
-            logger.info("Nuevo usuario registrado: %s (ID=%s)", usuario.email, usuario.pk)
-            messages.success(request, _("Cuenta creada exitosamente. Podés iniciar sesión."))
-            return redirect("accounts:login")
-        except ValidationError as exc:
-            messages.error(request, exc.message)
-        except Exception as exc:
-            logger.error("Error al registrar usuario: %s", exc)
-            messages.error(request, _("Ocurrió un error al crear la cuenta. Intente nuevamente."))
+    if request.method == "POST":
+        form_valid = form.is_valid()
+        tarjeta_valid = tarjeta_form.is_valid()
+        if form_valid and tarjeta_valid:
+            try:
+                usuario = form.save()
+                tarjetas_svc.guardar_tarjeta(
+                    usuario,
+                    tarjeta_form.cleaned_data["numero_tarjeta"],
+                    tarjeta_form.cleaned_data["titular"],
+                    tarjeta_form.cleaned_data["vencimiento"],
+                )
+                logger.info("Nuevo usuario registrado: %s (ID=%s)", usuario.email, usuario.pk)
+                messages.success(request, _("Cuenta creada exitosamente. Podés iniciar sesión."))
+                return redirect("accounts:login")
+            except ValidationError as exc:
+                messages.error(request, exc.message)
+            except Exception as exc:
+                logger.error("Error al registrar usuario: %s", exc)
+                messages.error(request, _("Ocurrió un error al crear la cuenta. Intente nuevamente."))
 
     return render(request, "accounts/registro.html", {
         "form": form,
