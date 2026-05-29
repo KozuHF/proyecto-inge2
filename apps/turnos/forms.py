@@ -62,19 +62,40 @@ class PasoHoraForm(forms.Form):
         widget=forms.RadioSelect,
     )
 
-    def __init__(self, *args, horas_info=None, **kwargs):
+    def __init__(self, *args, horas_info=None, usuario=None, fecha=None, **kwargs):
         super().__init__(*args, **kwargs)
         horas_info = horas_info or []
+        
+        # Busquemos las horas en las que el usuario ya tiene reserva ese día
+        horas_ocupadas = set()
+        if usuario and fecha:
+            from .models import Reserva
+            reservas_usuario = Reserva.objects.filter(
+                usuario=usuario,
+                turno__fecha=fecha
+            ).exclude(estado=Reserva.Estado.CANCELADA)
+            horas_ocupadas = set(reservas_usuario.values_list("turno__hora", flat=True))
+
         choices = []
         for info in horas_info:
             hora  = info["hora"]
             label = f"{hora:02d}:00 – {hora + 1:02d}:00"
-            if info["lleno"]:
+            if hora in horas_ocupadas:
+                label += _(" (Ya tenés una reserva a esta hora)")
+            elif info["lleno"]:
                 label += _(" (LLENO – lista de espera: %d)") % info["en_espera"]
             else:
                 label += _(" (%d cupos disponibles)") % info["libres"]
             choices.append((hora, label))
+        
         self.fields["hora"].choices = choices
+        self.horas_ocupadas = {str(h) for h in horas_ocupadas}
+
+    def clean_hora(self):
+        hora = self.cleaned_data.get("hora")
+        if hora is not None and str(hora) in self.horas_ocupadas:
+            raise forms.ValidationError(_("No podés seleccionar un horario en el que ya tenés otra reserva."))
+        return hora
 
 
 class PasoSeleccionFechasForm(forms.Form):
@@ -87,17 +108,38 @@ class PasoSeleccionFechasForm(forms.Form):
         error_messages={"required": _("Seleccioná al menos un día.")},
     )
 
-    def __init__(self, *args, fechas_candidatas=None, **kwargs):
+    def __init__(self, *args, fechas_candidatas=None, usuario=None, hora=None, **kwargs):
         super().__init__(*args, **kwargs)
         fechas_candidatas = fechas_candidatas or []
         nombres = [_("Lunes"), _("Martes"), _("Miércoles"), _("Jueves"), _("Viernes"), _("Sábado")]
+        
+        # Busquemos las fechas en las que el usuario ya tiene reserva a esa hora
+        fechas_ocupadas = set()
+        if usuario and hora is not None:
+            from .models import Reserva
+            reservas_usuario = Reserva.objects.filter(
+                usuario=usuario,
+                turno__hora=hora,
+                turno__fecha__in=fechas_candidatas
+            ).exclude(estado=Reserva.Estado.CANCELADA)
+            fechas_ocupadas = set(reservas_usuario.values_list("turno__fecha", flat=True))
+
         self.fields["fechas"].choices = [
             (
                 f.isoformat(),
-                f"{nombres[f.weekday()]} {f.day:02d}/{f.month:02d}/{f.year}",
+                f"{nombres[f.weekday()]} {f.day:02d}/{f.month:02d}/{f.year}" +
+                (_(" (Ya tenés una reserva a esta hora)") if f in fechas_ocupadas else ""),
             )
             for f in fechas_candidatas
         ]
+        self.fechas_ocupadas = {f.isoformat() for f in fechas_ocupadas}
+
+    def clean_fechas(self):
+        fechas = self.cleaned_data.get("fechas")
+        for f_str in fechas:
+            if f_str in self.fechas_ocupadas:
+                raise forms.ValidationError(_("No podés seleccionar un día en el que ya tenés otra reserva a la misma hora."))
+        return fechas
 
 
 from .models import Turno

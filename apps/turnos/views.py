@@ -122,9 +122,14 @@ def paso_fecha(request):
     form = PasoFechaForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        wizard["fecha"] = form.cleaned_data["fecha"].isoformat()
-        _wizard_set(request, wizard)
-        return redirect("turnos:paso_hora")
+        fecha = form.cleaned_data["fecha"]
+        horas_info = services.obtener_horas_disponibles(actividad, fecha)
+        if not horas_info:
+            form.add_error("fecha", _("No hay horarios disponibles configurados para este día de la semana."))
+        else:
+            wizard["fecha"] = fecha.isoformat()
+            _wizard_set(request, wizard)
+            return redirect("turnos:paso_hora")
 
     return render(request, "turnos/paso_fecha.html", {
         "form": form,
@@ -149,7 +154,12 @@ def paso_hora(request):
     actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
     fecha = date_type.fromisoformat(wizard["fecha"])
     horas_info = services.obtener_horas_disponibles(actividad, fecha)
-    form = PasoHoraForm(request.POST or None, horas_info=horas_info)
+    form = PasoHoraForm(
+        request.POST or None,
+        horas_info=horas_info,
+        usuario=request.user,
+        fecha=fecha,
+    )
 
     if request.method == "POST" and form.is_valid():
         wizard["hora"] = form.cleaned_data["hora"]
@@ -223,6 +233,8 @@ def paso_seleccion_fechas(request):
     form = PasoSeleccionFechasForm(
         request.POST or None,
         fechas_candidatas=fechas_candidatas,
+        usuario=request.user,
+        hora=hora,
     )
 
     if request.method == "POST" and form.is_valid():

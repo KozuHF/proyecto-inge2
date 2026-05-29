@@ -24,11 +24,22 @@
       <form method="post" class="space-y-3">
         {% csrf_token %}
         {% for radio in form.hora %}
-          <label class="flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition
-            {% if 'LLENO' in radio.choice_label %}border-red-200 bg-red-50{% else %}border-gray-200 hover:border-green-500 hover:bg-green-50{% endif %}">
-            {{ radio.tag }}
-            <span class="font-medium text-gray-800">{{ radio.choice_label }}</span>
-          </label>
+          {% if radio.data.value in form.horas_ocupadas %}
+            <label class="flex items-center gap-3 p-4 border border-red-200 bg-red-50/50 rounded-xl cursor-not-allowed select-none opacity-60">
+              <input type="radio" name="hora" value="{{ radio.data.value }}" disabled class="w-4 h-4 text-red-600 bg-gray-50 border-gray-300 focus:ring-red-500 focus:ring-2">
+              <span class="font-medium text-gray-500">{{ radio.choice_label }}</span>
+            </label>
+          {% elif 'LLENO' in radio.choice_label %}
+            <label class="flex items-center gap-3 p-4 border border-red-200 bg-red-50 rounded-xl cursor-pointer transition">
+              {{ radio.tag }}
+              <span class="font-medium text-gray-800">{{ radio.choice_label }}</span>
+            </label>
+          {% else %}
+            <label class="flex items-center gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-green-500 hover:bg-green-50 transition">
+              {{ radio.tag }}
+              <span class="font-medium text-gray-800">{{ radio.choice_label }}</span>
+            </label>
+          {% endif %}
         {% endfor %}
         {{ form.hora.errors }}
 

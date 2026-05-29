@@ -730,3 +730,74 @@ class ComprobanteReservaMailTestCase(TestCase):
 
         self.assertFalse(enviado)
         self.assertEqual(len(mail.outbox), 0)
+
+
+class UserReservationConflictTestCase(TestCase):
+    def setUp(self):
+        from apps.actividades.models import Actividad
+        from apps.accounts.models import Usuario, Roles
+        self.usuario = Usuario.objects.create_user(
+            email="conflicto@test.com",
+            nombre="Pedro",
+            apellido="Conflicto",
+            nro_documento="77778888",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.USER,
+        )
+        self.actividad_futbol, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL,
+            defaults={"cupos": 5, "precio_turno": 5000},
+        )
+        self.actividad_basquet, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.BASKET,
+            defaults={"cupos": 5, "precio_turno": 5000},
+        )
+        # Create a turno for Futbol on 2026-06-01 (Monday) at 10:00
+        self.turno_futbol = Turno.objects.create(
+            actividad=self.actividad_futbol,
+            fecha=date(2026, 6, 1),
+            hora=10,
+            cupos=5
+        )
+        # Create a booking/reserva for this user on that turno
+        Reserva.objects.create(
+            usuario=self.usuario,
+            turno=self.turno_futbol,
+            estado=Reserva.Estado.CONFIRMADA
+        )
+
+    def test_paso_hora_validation_fails_if_already_reserved(self):
+        from apps.turnos.forms import PasoHoraForm
+        # The user already has a reservation on 2026-06-01 at 10:00 (in Fútbol)
+        # Trying to select 10:00 on the same date (even for Basquet) should fail validation.
+        horas_info = [{"hora": 10, "libres": 5, "lleno": False, "en_espera": 0}]
+        form = PasoHoraForm(
+            data={"hora": 10},
+            horas_info=horas_info,
+            usuario=self.usuario,
+            fecha=date(2026, 6, 1)
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("hora", form.errors)
+        self.assertEqual(
+            form.errors["hora"][0],
+            "No podés seleccionar un horario en el que ya tenés otra reserva."
+        )
+
+    def test_paso_seleccion_fechas_validation_fails_if_already_reserved(self):
+        from apps.turnos.forms import PasoSeleccionFechasForm
+        # Trying to select 2026-06-01 in a series at 10:00 should fail validation
+        fechas_candidatas = [date(2026, 6, 1), date(2026, 6, 8)]
+        form = PasoSeleccionFechasForm(
+            data={"fechas": ["2026-06-01", "2026-06-08"]},
+            fechas_candidatas=fechas_candidatas,
+            usuario=self.usuario,
+            hora=10
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("fechas", form.errors)
+        self.assertEqual(
+            form.errors["fechas"][0],
+            "No podés seleccionar un día en el que ya tenés otra reserva a la misma hora."
+        )
