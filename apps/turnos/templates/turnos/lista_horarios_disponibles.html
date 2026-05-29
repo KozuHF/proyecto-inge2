@@ -1,0 +1,95 @@
+{% extends "_base.html" %}
+{% load i18n %}
+
+{% block title %}Horarios disponibles — Club360{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-10">
+
+  <!-- Encabezado -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-extrabold text-gray-900 dark:text-white">Horarios disponibles</h1>
+      <p class="text-sm text-gray-500 mt-1">Cada horario genera turnos automáticamente para los próximos 6 meses.</p>
+    </div>
+    <a href="{% url 'turnos:crear_horario_disponible' %}"
+       class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      Nuevo horario
+    </a>
+  </div>
+
+  <!-- Mensajes -->
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="mb-4 px-4 py-3 rounded-lg text-sm font-medium
+        {% if msg.tags == 'success' %}bg-green-100 text-green-800
+        {% elif msg.tags == 'error' %}bg-red-100 text-red-800
+        {% else %}bg-blue-100 text-blue-800{% endif %}">
+        {{ msg }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Tabla -->
+  {% if horarios %}
+    <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+      <table class="w-full text-sm text-left text-gray-700 dark:text-gray-300">
+        <thead class="text-xs uppercase bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+          <tr>
+            <th class="px-5 py-3">Actividad</th>
+            <th class="px-5 py-3">Día</th>
+            <th class="px-5 py-3">Horario</th>
+            <th class="px-5 py-3">Cupos</th>
+            <th class="px-5 py-3">Estado</th>
+            <th class="px-5 py-3 text-right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-900">
+          {% for h in horarios %}
+          <tr class="hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+            <td class="px-5 py-3 font-medium text-gray-900 dark:text-white">{{ h.actividad }}</td>
+            <td class="px-5 py-3">{{ h.get_dia_semana_display }}</td>
+            <td class="px-5 py-3">{{ h.hora|stringformat:"02d" }}:00 – {% widthratio h.hora 1 1 as hora_fin %}{{ h.hora|add:1|stringformat:"02d" }}:00</td>
+            <td class="px-5 py-3">
+              {% if h.cupos %}
+                {{ h.cupos }}
+              {% else %}
+                <span class="text-gray-400 italic">{{ h.actividad.cupos }} (actividad)</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3">
+              {% if h.activo %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Activo</span>
+              {% else %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">Inactivo</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3 text-right">
+              <div class="inline-flex gap-2">
+                <a href="{% url 'turnos:editar_horario_disponible' h.pk %}"
+                   class="text-xs font-medium text-blue-600 hover:underline">Editar</a>
+                <a href="{% url 'turnos:eliminar_horario_disponible' h.pk %}"
+                   class="text-xs font-medium text-red-500 hover:underline">Eliminar</a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="text-center py-20 text-gray-400">
+      <svg class="mx-auto w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      </svg>
+      <p class="font-medium">No hay horarios configurados.</p>
+      <p class="text-sm mt-1">Creá el primero para empezar a generar turnos.</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
