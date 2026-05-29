@@ -1,22 +1,22 @@
-{% extends "_base.html" %}
+{% extends "accounts/panel_base.html" %}
 {% load i18n %}
 
 {% block title %}Editar horario — Club360{% endblock %}
 
-{% block content %}
-<div class="max-w-xl mx-auto px-4 py-10">
+{% block panel_content %}
+<div class="max-w-xl mx-auto">
 
   <!-- Breadcrumb -->
   <nav class="text-sm text-gray-400 mb-6">
-    <a href="{% url 'turnos:lista_horarios_disponibles' %}" class="hover:text-gray-600">Horarios</a>
+    <a href="{% url 'panel_turnos' %}" class="hover:text-gray-600">Turnos</a>
     <span class="mx-2">/</span>
     <span class="text-gray-600 font-medium">Editar</span>
   </nav>
 
-  <h1 class="text-2xl font-extrabold text-gray-900 dark:text-white mb-1">Editar horario</h1>
-  <p class="text-sm text-gray-500 mb-8">
+  <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white mb-1">Editar horario</h1>
+  <p class="text-gray-500 dark:text-gray-400 text-sm mb-8">
     <span class="font-medium text-gray-700 dark:text-gray-300">{{ horario }}</span>
-    — Si reactivás un horario inactivo se generarán los turnos faltantes de los próximos 6 meses.
+    — Si reactivás un horario inactivo se habilitarán los turnos faltantes.
   </p>
 
   <!-- Errores no de campo -->
@@ -28,10 +28,10 @@
     </div>
   {% endif %}
 
-  <form method="post" class="space-y-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-sm">
+  <form method="post" class="space-y-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-8 shadow-sm">
     {% csrf_token %}
 
-    <!-- Actividad (solo lectura en edición si querés bloquearlo, aquí se muestra editable) -->
+    <!-- Actividad -->
     <div>
       <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
         {{ form.actividad.label }}
@@ -59,6 +59,7 @@
         {{ form.hora.label }}
       </label>
       {{ form.hora }}
+      <p id="fecha-inicio-ayuda" class="mt-1.5 text-xs text-green-600 dark:text-green-400 font-medium"></p>
       {% if form.hora.errors %}
         <p class="mt-1 text-xs text-red-600">{{ form.hora.errors|join:", " }}</p>
       {% endif %}
@@ -70,33 +71,58 @@
         {{ form.cupos.label }}
       </label>
       {{ form.cupos }}
-      <p class="mt-1 text-xs text-gray-400">Dejá vacío para usar los cupos predeterminados de la actividad.</p>
       {% if form.cupos.errors %}
         <p class="mt-1 text-xs text-red-600">{{ form.cupos.errors|join:", " }}</p>
       {% endif %}
     </div>
 
+    <!-- Precio / Monto -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        {{ form.precio.label }}
+      </label>
+      <div class="relative rounded-lg shadow-sm">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <span class="text-gray-500 dark:text-gray-400 text-sm">$</span>
+        </div>
+        {% if form.precio.value %}
+          <input type="number" name="precio" value="{{ form.precio.value }}" step="0.01" min="0.01" id="id_precio" style="padding-left: 2rem !important;" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="0.00" required>
+        {% else %}
+          <input type="number" name="precio" step="0.01" min="0.01" id="id_precio" style="padding-left: 2rem !important;" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="0.00" required>
+        {% endif %}
+      </div>
+      {% if form.precio.errors %}
+        <p class="mt-1 text-xs text-red-600">{{ form.precio.errors|join:", " }}</p>
+      {% endif %}
+    </div>
+
     <!-- Activo -->
-    <div class="flex items-center gap-3 pt-1">
-      {{ form.activo }}
-      <label for="{{ form.activo.id_for_label }}" class="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-        {{ form.activo.label }}
+    <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+      <div>
+        <label for="{{ form.activo.id_for_label }}" class="text-sm font-semibold text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+          {{ form.activo.label }}
+        </label>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Habilitar este horario para la reserva de turnos.</p>
+      </div>
+      <label class="relative inline-flex items-center cursor-pointer select-none">
+        <input type="checkbox" id="{{ form.activo.id_for_label }}" name="{{ form.activo.name }}" {% if form.activo.value %}checked{% endif %} class="sr-only peer">
+        <div class="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
       </label>
     </div>
 
     <!-- Acciones -->
     <div class="flex items-center justify-between pt-2">
       <a href="{% url 'turnos:eliminar_horario_disponible' horario.pk %}"
-         class="text-sm font-medium text-red-500 hover:underline">
+         class="text-sm font-semibold text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition">
         Eliminar horario
       </a>
       <div class="flex gap-3">
-        <a href="{% url 'turnos:lista_horarios_disponibles' %}"
-           class="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+        <a href="{% url 'panel_turnos' %}"
+           class="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-750">
           Cancelar
         </a>
         <button type="submit"
-                class="px-5 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
+                class="px-5 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition dark:bg-green-700 dark:hover:bg-green-600">
           Guardar cambios
         </button>
       </div>
@@ -104,4 +130,121 @@
   </form>
 
 </div>
-{% endblock %}
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const actSelect = document.getElementById("id_actividad");
+    const daySelect = document.getElementById("id_dia_semana");
+    const hourSelect = document.getElementById("id_hora");
+    const helpText = document.getElementById("fecha-inicio-ayuda");
+    const horarios = {{ horarios_existentes_json|safe }};
+    const turnosExistentes = {{ turnos_por_slot_json|safe }};
+    const dayNames = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+    if (actSelect && daySelect && hourSelect) {
+        // Guardar las opciones originales de hora
+        const originalOptions = Array.from(hourSelect.options).map(opt => ({
+            value: opt.value,
+            text: opt.text
+        }));
+
+        function updateFechaInicioAyuda() {
+            const selectedAct = actSelect.value;
+            const selectedDay = parseInt(daySelect.value, 10);
+            const selectedHour = hourSelect.value;
+
+            if (isNaN(selectedDay) || !selectedHour || !helpText) {
+                if (helpText) helpText.textContent = "";
+                return;
+            }
+
+            const key = `${selectedAct}_${selectedDay}_${selectedHour}`;
+            const dates = turnosExistentes[key] || [];
+
+            if (dates.length > 0) {
+                // Las fechas vienen ordenadas. Tomamos la última.
+                const lastDateStr = dates[dates.length - 1]; // "YYYY-MM-DD"
+                const parts = lastDateStr.split('-');
+                const lastDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 15) ? parseInt(parts[1], 10) - 1 : 0, parseInt(parts[2], 10));
+                
+                // Sumamos 7 días para el siguiente turno libre
+                const nextDate = new Date(lastDate);
+                nextDate.setDate(lastDate.getDate() + 7);
+
+                const format = (d) => {
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const yyyy = d.getFullYear();
+                    return `${dd}/${mm}/${yyyy}`;
+                };
+
+                helpText.textContent = `Ya existen turnos creados para este horario hasta el ${dayNames[selectedDay]} ${format(lastDate)}. Los nuevos se generarán a partir del ${dayNames[selectedDay]} ${format(nextDate)}.`;
+            } else {
+                const today = new Date();
+                const resultDate = new Date(today);
+                
+                // selectedDay: 0=Lunes ... 5=Sábado
+                // JS getDay(): 0=Domingo, 1=Lunes ... 6=Sábado
+                const jsSelectedDay = (selectedDay + 1) % 7;
+                
+                let diff = jsSelectedDay - today.getDay();
+                if (diff <= 0) {
+                    diff += 7;
+                }
+                
+                resultDate.setDate(today.getDate() + diff);
+                
+                const dd = String(resultDate.getDate()).padStart(2, '0');
+                const mm = String(resultDate.getMonth() + 1).padStart(2, '0');
+                const yyyy = resultDate.getFullYear();
+                
+                helpText.textContent = `Los turnos se generarán a partir del ${dayNames[selectedDay]} ${dd}/${mm}/${yyyy}.`;
+            }
+        }
+
+        function filterHours() {
+            const selectedAct = actSelect.value;
+            const selectedDay = parseInt(daySelect.value, 10);
+            
+            // Horas ya ocupadas para la actividad y el día seleccionados (excluyendo este mismo registro)
+            const takenHours = horarios
+                .filter(h => h.actividad_id == selectedAct && h.dia_semana === selectedDay)
+                .map(h => parseInt(h.hora, 10));
+
+            const currentVal = hourSelect.value;
+            hourSelect.innerHTML = "";
+            let selectedSet = false;
+            let firstValidOptionValue = null;
+
+            originalOptions.forEach(optData => {
+                const hVal = parseInt(optData.value, 10);
+                if (!takenHours.includes(hVal)) {
+                    const opt = document.createElement("option");
+                    opt.value = optData.value;
+                    opt.text = optData.text;
+                    hourSelect.appendChild(opt);
+                    if (firstValidOptionValue === null) {
+                        firstValidOptionValue = optData.value;
+                    }
+                    if (optData.value === currentVal) {
+                        hourSelect.value = currentVal;
+                        selectedSet = true;
+                    }
+                }
+            });
+
+            if (!selectedSet && firstValidOptionValue !== null) {
+                hourSelect.value = firstValidOptionValue;
+            }
+
+            updateFechaInicioAyuda();
+        }
+
+        actSelect.addEventListener("change", filterHours);
+        daySelect.addEventListener("change", filterHours);
+        hourSelect.addEventListener("change", updateFechaInicioAyuda);
+        filterHours();
+    }
+});
+</script>
+{% endblock panel_content %}

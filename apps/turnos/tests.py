@@ -173,6 +173,30 @@ class TurnosPanelTestCase(TestCase):
         self.assertEqual(self.turno.hora, 12)
         self.assertEqual(self.turno.cupos, 5)
 
+    def test_editar_turno_hora_choices(self):
+        """TurnoForm dynamically filters out hours that are already occupied by other turnos on that date/activity."""
+        # Create another Turno for the same activity and date but different hour (e.g., 15)
+        turno_conflicto = Turno.objects.create(
+            actividad=self.actividad,
+            fecha=self.turno.fecha,
+            hora=15,
+            cupos=3
+        )
+        self.client.force_login(self.admin)
+        
+        # Load the edit page for self.turno
+        url = reverse('editar_turno', kwargs={'pk': self.turno.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        
+        form = response.context['form']
+        choices = [c[0] for c in form.fields['hora'].choices]
+        
+        # 15 should be excluded because it's occupied by turno_conflicto
+        self.assertNotIn(15, choices)
+        # self.turno's own hour (which is self.turno.hora, e.g. 10) should be in choices to allow keeping it
+        self.assertIn(self.turno.hora, choices)
+
     def test_eliminar_turno_view_post(self):
         """Admin can delete a turn via the delete view, deleting associated reservations."""
         # Create a reservation
@@ -198,6 +222,12 @@ class TurnosPanelTestCase(TestCase):
         # Verify both Turno and Reserva are deleted
         self.assertFalse(Turno.objects.filter(pk=self.turno.pk).exists())
         self.assertFalse(Reserva.objects.filter(pk=reserva.pk).exists())
+
+    def test_crear_horario_disponible_view_get(self):
+        """Verify that the schedule creation view loads successfully on GET."""
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('turnos:crear_horario_disponible'))
+        self.assertEqual(response.status_code, 200)
 
     def test_panel_turnos_sunday(self):
         """Sunday should return es_dia_invalido=True, empty turnos list, and closed alert notice."""
@@ -393,7 +423,7 @@ class TurnosPanelTestCase(TestCase):
             actividad=self.actividad,
             dia_semana=0,  # lunes
             hora=10,
-            defaults={"activo": True},
+            defaults={"activo": True, "cupos": 5, "precio": 8500},
         )
 
         # Mock timezone.now() to return May 1, 2026 so that May 25 is in the future
@@ -500,3 +530,82 @@ class PenalidadCancelacionesTestCase(TestCase):
         self.assertIn("junio", msg.lower())
         self.assertIn("2026", msg)
         self.assertIn("no puede acceder", msg.lower())
+
+
+class HorarioDisponibleValidationTestCase(TestCase):
+    def setUp(self):
+        from apps.actividades.models import Actividad
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL,
+            defaults={"cupos": 5, "precio_turno": 5000}
+        )
+
+    def test_clean_validation_without_future_turnos(self):
+        """
+        If a schedule exists but there are no future turnos in the database,
+        creating another schedule in the same slot should pass validation.
+        """
+        from apps.turnos.models import HorarioDisponible
+        from apps.turnos.forms import HorarioDisponibleForm
+
+        # Create initial schedule
+        h1 = HorarioDisponible.objects.create(
+            actividad=self.actividad,
+            dia_semana=1,  # Tuesday
+            hora=10,
+            cupos=5,
+            precio=6000,
+            activo=True
+        )
+
+        # There are no Turnos in the database at all.
+        # Try to validate a form for a new schedule in the same slot
+        form = HorarioDisponibleForm(data={
+            "actividad": self.actividad.pk,
+            "dia_semana": 1,
+            "hora": 10,
+            "cupos": 5,
+            "precio": 6500,
+            "activo": True
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_clean_validation_with_future_turnos(self):
+        """
+        If a schedule exists and there are future turnos in the DB,
+        validation should fail for a new schedule.
+        """
+        from apps.turnos.models import HorarioDisponible, Turno
+        from apps.turnos.forms import HorarioDisponibleForm
+        from datetime import date
+
+        # Create schedule
+        h1 = HorarioDisponible.objects.create(
+            actividad=self.actividad,
+            dia_semana=1,  # Tuesday
+            hora=10,
+            cupos=5,
+            precio=6000,
+            activo=True
+        )
+
+        # Create a future Turno on Tuesday (e.g. June 2, 2026 is a Tuesday)
+        Turno.objects.create(
+            actividad=self.actividad,
+            fecha=date(2026, 6, 2),
+            hora=10,
+            cupos=5
+        )
+
+        # Form validation should fail now
+        form = HorarioDisponibleForm(data={
+            "actividad": self.actividad.pk,
+            "dia_semana": 1,
+            "hora": 10,
+            "cupos": 5,
+            "precio": 6500,
+            "activo": True
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("__all__", form.errors)
+        self.assertIn("Ya existe un horario activo y con turnos futuros", form.errors["__all__"][0])

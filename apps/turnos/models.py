@@ -1,6 +1,8 @@
+from decimal import Decimal
 from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -94,8 +96,13 @@ class HorarioDisponible(models.Model):
     )
     cupos = models.PositiveIntegerField(
         verbose_name=_("Cupos"),
-        help_text=_("Cupos disponibles. Si se deja vacío se toma el valor de la actividad."),
-        null=True, blank=True,
+        validators=[MinValueValidator(1)],
+    )
+    precio = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name=_("Precio"),
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
     activo = models.BooleanField(
         default=True,

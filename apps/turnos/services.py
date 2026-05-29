@@ -53,7 +53,7 @@ def _obtener_o_crear_turno(actividad: Actividad, fecha: date, hora: int) -> Turn
     return turno
 
 
-def generar_turnos_desde_horario(horario, meses: int = 6) -> tuple[int, int]:
+def generar_turnos_desde_horario(horario, meses: int = 120) -> tuple[int, int]:
     """
     Genera los objetos Turno para los próximos `meses` meses a partir de hoy,
     según el HorarioDisponible recibido.
@@ -98,7 +98,7 @@ def generar_turnos_desde_horario(horario, meses: int = 6) -> tuple[int, int]:
             actividad=horario.actividad,
             fecha=fecha_actual,
             hora=horario.hora,
-            defaults={"cupos": cupos},
+            defaults={"cupos": cupos, "precio_override": horario.precio},
         )
         if created:
             creados += 1

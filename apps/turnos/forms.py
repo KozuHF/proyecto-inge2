@@ -1,6 +1,7 @@
 from django import forms
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
 
 from apps.actividades.models import Actividad
 from .models import DIAS_HABILES, HORAS_VALIDAS, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, FERIADOS_INAMOVIBLES
@@ -124,7 +125,10 @@ class TurnoForm(forms.ModelForm):
         widgets = {
             "actividad": forms.Select(attrs={"class": PANEL_INPUT_CLASS}),
             "fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": PANEL_INPUT_CLASS}),
-            "hora": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 6, "max": 22}),
+            "hora": forms.Select(
+                choices=[(h, f"{h:02d}:00 – {h + 1:02d}:00") for h in HORAS_VALIDAS],
+                attrs={"class": PANEL_INPUT_CLASS},
+            ),
             "cupos": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 1}),
             "precio_override": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 0, "step": "0.01"}),
         }
@@ -142,6 +146,23 @@ class TurnoForm(forms.ModelForm):
                 "Dejar vacío para mantener el precio actual ($%(precio)s)."
             ) % {"precio": precio_base}
 
+        # Filter out occupied hours for this activity and date (excluding current instance hour)
+        if self.instance and self.instance.actividad_id and self.instance.fecha:
+            horas_ocupadas_qs = Turno.objects.filter(
+                actividad=self.instance.actividad,
+                fecha=self.instance.fecha
+            )
+            if self.instance.pk:
+                horas_ocupadas_qs = horas_ocupadas_qs.exclude(pk=self.instance.pk)
+            
+            horas_ocupadas = set(horas_ocupadas_qs.values_list("hora", flat=True))
+            
+            self.fields["hora"].choices = [
+                (h, f"{h:02d}:00 – {h + 1:02d}:00")
+                for h in HORAS_VALIDAS
+                if h not in horas_ocupadas
+            ]
+
 
 from .models import HorarioDisponible, DIAS_SEMANA_CHOICES, HORAS_VALIDAS
 
@@ -156,7 +177,7 @@ class HorarioDisponibleForm(forms.ModelForm):
 
     class Meta:
         model = HorarioDisponible
-        fields = ["actividad", "dia_semana", "hora", "cupos", "activo"]
+        fields = ["actividad", "dia_semana", "hora", "cupos", "precio", "activo"]
         widgets = {
             "actividad": forms.Select(attrs={"class": PANEL_INPUT_CLASS}),
             "dia_semana": forms.Select(
@@ -168,29 +189,72 @@ class HorarioDisponibleForm(forms.ModelForm):
                 attrs={"class": PANEL_INPUT_CLASS},
             ),
             "cupos": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 1}),
+            "precio": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 0.01, "step": "0.01"}),
         }
 
     def clean(self):
-        cleaned = super().clean()
-        actividad  = cleaned.get("actividad")
-        dia_semana = cleaned.get("dia_semana")
-        hora       = cleaned.get("hora")
+        # El clean estándar de ModelForm, la validación de unicidad se maneja en validate_unique
+        return super().clean()
 
-        if actividad and dia_semana is not None and hora is not None:
-            qs = HorarioDisponible.objects.filter(
-                actividad=actividad,
-                dia_semana=dia_semana,
-                hora=hora,
-            )
-            if self.instance and self.instance.pk:
-                qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                dia_nombre = dict(DIAS_SEMANA_CHOICES).get(dia_semana, dia_semana)
-                raise forms.ValidationError(
-                    _(
-                        "Ya existe un horario para %(actividad)s los %(dia)s a las %(hora)02d:00. "
-                        "No puede haber dos horarios de la misma actividad en el mismo día y hora."
-                    )
-                    % {"actividad": actividad, "dia": dia_nombre, "hora": hora}
-                )
-        return cleaned
+    def validate_unique(self):
+        try:
+            self.instance.validate_unique()
+        except ValidationError as e:
+            actividad = self.cleaned_data.get("actividad")
+            dia_semana = self.cleaned_data.get("dia_semana")
+            hora = self.cleaned_data.get("hora")
+            activo = self.cleaned_data.get("activo", True)
+
+            if actividad and dia_semana is not None and hora is not None and activo:
+                django_week_day = (dia_semana + 1) % 7 + 1
+                tiene_turnos_futuros = Turno.objects.filter(
+                    actividad=actividad,
+                    hora=hora,
+                    fecha__gte=timezone.now().date(),
+                    fecha__week_day=django_week_day
+                ).exists()
+
+                if not tiene_turnos_futuros:
+                    # No tiene turnos futuros, así que podemos ignorar el error de unicidad.
+                    non_unique_errors = {}
+                    for field, errors in e.error_dict.items():
+                        filtered_errors = []
+                        for error in errors:
+                            if error.code == 'unique_together':
+                                continue
+                            filtered_errors.append(error)
+                        if filtered_errors:
+                            non_unique_errors[field] = filtered_errors
+                    
+                    if non_unique_errors:
+                        self._update_errors(ValidationError(non_unique_errors))
+                    return
+                else:
+                    # Sí tiene turnos futuros, mostramos un error amigable en vez del de Django
+                    non_unique_errors = {}
+                    has_ut = False
+                    for field, errors in e.error_dict.items():
+                        filtered_errors = []
+                        for error in errors:
+                            if error.code == 'unique_together':
+                                has_ut = True
+                                continue
+                            filtered_errors.append(error)
+                        if filtered_errors:
+                            non_unique_errors[field] = filtered_errors
+                    
+                    if has_ut:
+                        dia_nombre = dict(DIAS_SEMANA_CHOICES).get(dia_semana, dia_semana)
+                        friendly_error = ValidationError(
+                            _(
+                                "Ya existe un horario activo y con turnos futuros programados para %(actividad)s los %(dia)s a las %(hora)02d:00."
+                            )
+                            % {"actividad": actividad, "dia": dia_nombre, "hora": hora}
+                        )
+                        self.add_error(None, friendly_error)
+
+                    if non_unique_errors:
+                        self._update_errors(ValidationError(non_unique_errors))
+                    return
+
+            self._update_errors(e)

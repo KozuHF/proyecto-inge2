@@ -6,30 +6,34 @@
 {% block panel_content %}
 <div class="max-w-6xl mx-auto">
     <!-- Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white">Gestión de Turnos</h1>
-        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
-            Revisá, filtrá, modificá y eliminá los turnos del establecimiento.
-        </p>
+    <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white">Gestión de Turnos</h1>
+            <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
+                Revisá, filtrá, modificá y eliminá los turnos del establecimiento.
+            </p>
+        </div>
+        <div>
+            <a href="{% url 'turnos:crear_horario_disponible' %}"
+               class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 rounded-lg transition shadow-sm hover:shadow-md dark:focus:ring-green-800">
+                <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Crear turno
+            </a>
+        </div>
     </div>
 
     {% include "accounts/_messages.html" %}
 
     <!-- Filtros -->
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8 dark:bg-gray-800 dark:border-gray-700">
-        <form method="get" class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-            <!-- Fecha -->
-            <div>
-                <label for="fecha" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Fecha</label>
-                <input type="date" id="fecha" name="fecha" value="{{ fecha|date:'Y-m-d' }}"
-                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
-            </div>
-
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <!-- Deporte / Actividad -->
             <div>
                 <label for="actividad" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Deporte</label>
                 <select id="actividad" name="actividad"
-                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white transition shadow-sm">
                     <option value="todas" {% if actividad_seleccionada == 'todas' or not actividad_seleccionada %}selected{% endif %}>Todos los deportes</option>
                     {% for act in actividades %}
                         <option value="{{ act.id }}" {% if actividad_seleccionada == act.id|stringformat:"s" %}selected{% endif %}>
@@ -39,26 +43,56 @@
                 </select>
             </div>
 
+            <!-- Día de la semana -->
+            <div>
+                <label for="dia_semana" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Día de la semana</label>
+                <select id="dia_semana" name="dia_semana"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white transition shadow-sm">
+                    <option value="todos">Todos los días</option>
+                    <option value="0">Lunes</option>
+                    <option value="1">Martes</option>
+                    <option value="2">Miércoles</option>
+                    <option value="3">Jueves</option>
+                    <option value="4">Viernes</option>
+                    <option value="5">Sábado</option>
+                </select>
+            </div>
+
+            <!-- Horario -->
+            <div>
+                <label for="horario" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Horario</label>
+                <select id="horario" name="horario"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white transition shadow-sm">
+                    <option value="todos">Todos los horarios</option>
+                    <option value="8">de 8:00 a 9:00</option>
+                    <option value="9">de 9:00 a 10:00</option>
+                    <option value="10">de 10:00 a 11:00</option>
+                    <option value="11">de 11:00 a 12:00</option>
+                    <option value="12">de 12:00 a 13:00</option>
+                    <option value="13">de 13:00 a 14:00</option>
+                    <option value="14">de 14:00 a 15:00</option>
+                    <option value="15">de 15:00 a 16:00</option>
+                    <option value="16">de 16:00 a 17:00</option>
+                    <option value="17">de 17:00 a 18:00</option>
+                    <option value="18">de 18:00 a 19:00</option>
+                    <option value="19">de 19:00 a 20:00</option>
+                    <option value="20">de 20:00 a 21:00</option>
+                    <option value="21">de 21:00 a 22:00</option>
+                </select>
+            </div>
+
             <!-- Estado de Ocupación -->
             <div>
                 <label for="estado_ocupacion" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Ocupación</label>
                 <select id="estado_ocupacion" name="estado_ocupacion"
-                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white transition shadow-sm">
                     <option value="todos" {% if estado_seleccionado == 'todos' %}selected{% endif %}>Todos</option>
                     <option value="vacios" {% if estado_seleccionado == 'vacios' %}selected{% endif %}>Vacíos</option>
                     <option value="ocupados" {% if estado_seleccionado == 'ocupados' %}selected{% endif %}>Con reservas</option>
                     <option value="llenos" {% if estado_seleccionado == 'llenos' %}selected{% endif %}>Llenos</option>
                 </select>
             </div>
-
-            <!-- Botón Filtrar -->
-            <div>
-                <button type="submit"
-                    class="w-full text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition dark:focus:ring-green-800">
-                    Filtrar turnos
-                </button>
-            </div>
-        </form>
+        </div>
     </div>
 
     <!-- Lista de Turnos o Alerta de Día Cerrado -->
@@ -87,17 +121,28 @@
     </div>
     {% else %}
         {% if turnos %}
-        <div class="grid grid-cols-1 gap-6">
+        <div id="turnos-container" class="grid grid-cols-1 gap-6">
             {% for turno in turnos %}
-            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 dark:bg-gray-800 dark:border-gray-700 transition hover:shadow-md">
+            <div class="turno-card transition duration-200 rounded-2xl shadow-sm p-6 border {% if not turno.horario_activo %}opacity-50 bg-gray-50/40 border-gray-200 dark:bg-gray-800/20 dark:border-gray-800 text-gray-400 dark:text-gray-500{% else %}bg-white border-gray-200 hover:shadow-md dark:bg-gray-800 dark:border-gray-700{% endif %}"
+                 data-actividad-id="{{ turno.actividad.id }}"
+                 data-dia-semana="{{ turno.fecha.weekday }}"
+                 data-hora="{{ turno.hora }}"
+                 data-cupos-ocupados="{{ turno.cupos_ocupados }}"
+                 data-cupos-totales="{{ turno.cupos_totales }}"
+                 data-esta-lleno="{% if turno.esta_lleno %}true{% else %}false{% endif %}">
                 <!-- Header del Turno -->
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-gray-150 dark:border-gray-700">
                     <div class="mb-2 sm:mb-0">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
                             {{ turno.actividad.get_nombre_display }}
                         </span>
-                        <h3 class="text-lg font-bold text-gray-800 dark:text-white mt-1">
-                            {{ turno.hora|stringformat:"02d" }}:00 – {{ turno.hora|add:1|stringformat:"02d" }}:00
+                        {% if not turno.horario_activo %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 ml-2">
+                            Horario Inactivo
+                        </span>
+                        {% endif %}
+                        <h3 class="text-lg font-bold text-gray-800 dark:text-white mt-1 {% if not turno.horario_activo %}text-gray-400 dark:text-gray-500{% endif %}">
+                            {{ turno.fecha|date:"d/m/Y" }} &nbsp;|&nbsp; {{ turno.hora|stringformat:"02d" }}:00 – {{ turno.hora|add:1|stringformat:"02d" }}:00
                         </h3>
                     </div>
 
@@ -185,6 +230,11 @@
             </div>
             {% endfor %}
         </div>
+
+        <!-- Mensaje de no resultados (cuando JS oculta todos los turnos) -->
+        <div id="no-turnos-message" style="display: none;" class="bg-white border border-gray-200 rounded-2xl p-10 text-center dark:bg-gray-800 dark:border-gray-700 mt-6 transition duration-300">
+            <p class="text-gray-500 dark:text-gray-400">No hay turnos registrados que coincidan con los criterios seleccionados.</p>
+        </div>
         {% else %}
         <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center dark:bg-gray-800 dark:border-gray-700">
             <p class="text-gray-500 dark:text-gray-400">No hay turnos registrados que coincidan con los criterios seleccionados.</p>
@@ -192,4 +242,74 @@
         {% endif %}
     {% endif %}
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const filterDeporte = document.getElementById('actividad');
+    const filterDia = document.getElementById('dia_semana');
+    const filterHorario = document.getElementById('horario');
+    const filterOcupacion = document.getElementById('estado_ocupacion');
+    const turnoCards = document.querySelectorAll('.turno-card');
+    const noTurnosMessage = document.getElementById('no-turnos-message');
+
+    function applyFilters() {
+        const deporteVal = filterDeporte.value;
+        const diaVal = filterDia.value;
+        const horarioVal = filterHorario.value;
+        const ocupacionVal = filterOcupacion.value;
+
+        let visibleCount = 0;
+
+        turnoCards.forEach(card => {
+            const cardDeporte = card.getAttribute('data-actividad-id');
+            const cardDia = card.getAttribute('data-dia-semana');
+            const cardHora = card.getAttribute('data-hora');
+            const cuposOcupados = parseInt(card.getAttribute('data-cupos-ocupados') || '0', 10);
+            const cuposTotales = parseInt(card.getAttribute('data-cupos-totales') || '0', 10);
+            const estaLleno = card.getAttribute('data-esta-lleno') === 'true';
+
+            const matchDeporte = (deporteVal === 'todas' || cardDeporte === deporteVal);
+            const matchDia = (diaVal === 'todos' || cardDia === diaVal);
+            const matchHorario = (horarioVal === 'todos' || cardHora === horarioVal);
+            
+            let matchOcupacion = true;
+            if (ocupacionVal === 'vacios') {
+                matchOcupacion = (cuposOcupados === 0);
+            } else if (ocupacionVal === 'ocupados') {
+                matchOcupacion = (cuposOcupados > 0);
+            } else if (ocupacionVal === 'llenos') {
+                matchOcupacion = estaLleno;
+            }
+
+            if (matchDeporte && matchDia && matchHorario && matchOcupacion) {
+                card.style.display = '';
+                // Pequeño retardo o transición suave de opacidad
+                setTimeout(() => {
+                    card.style.opacity = '1';
+                }, 10);
+                visibleCount++;
+            } else {
+                card.style.display = 'none';
+                card.style.opacity = '0';
+            }
+        });
+
+        if (noTurnosMessage) {
+            if (visibleCount === 0) {
+                noTurnosMessage.style.display = '';
+            } else {
+                noTurnosMessage.style.display = 'none';
+            }
+        }
+    }
+
+    if (filterDeporte) filterDeporte.addEventListener('change', applyFilters);
+    if (filterDia) filterDia.addEventListener('change', applyFilters);
+    if (filterHorario) filterHorario.addEventListener('change', applyFilters);
+    if (filterOcupacion) filterOcupacion.addEventListener('change', applyFilters);
+
+    // Ejecución inicial por si hay algún valor preseleccionado
+    applyFilters();
+});
+</script>
 {% endblock panel_content %}
