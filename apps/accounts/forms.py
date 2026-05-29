@@ -434,36 +434,15 @@ class EmpleadoCreacionForm(forms.ModelForm):
         fields = (
             "nombre",
             "apellido",
-            "nro_documento",
             "email",
-            "fecha_nacimiento",
         )
         widgets = {
             "nombre": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS, "placeholder": "Juan"}),
             "apellido": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS, "placeholder": "Pérez"}),
-            "nro_documento": forms.TextInput(attrs={"class": PANEL_INPUT_CLASS, "placeholder": "12345678"}),
             "email": forms.EmailInput(
                 attrs={"class": PANEL_INPUT_CLASS, "placeholder": "tu@email.com", "autocomplete": "email"}
             ),
-            "fecha_nacimiento": forms.DateInput(
-                format="%Y-%m-%d",
-                attrs={"type": "date", "class": PANEL_INPUT_CLASS}
-            ),
         }
-
-    def clean_fecha_nacimiento(self):
-        fecha = self.cleaned_data.get("fecha_nacimiento")
-        if fecha:
-            hoy = timezone.now().date()
-            edad = (
-                hoy.year - fecha.year
-                - ((hoy.month, hoy.day) < (fecha.month, fecha.day))
-            )
-            if edad < 18:
-                raise ValidationError(
-                    _("No se pueden registrar empleados menores de edad en el sistema.")
-                )
-        return fecha
 
     def clean_password1(self):
         password = self.cleaned_data.get("password1")
@@ -483,17 +462,31 @@ class EmpleadoCreacionForm(forms.ModelForm):
             raise ValidationError(_("Este correo ya se encuentra en uso."))
         return email
 
-    def clean_nro_documento(self):
-        doc = self.cleaned_data.get("nro_documento")
-        if doc and Usuario.objects.filter(nro_documento=doc).exists():
-            raise ValidationError(_("Este número de documento ya se encuentra registrado."))
-        return doc
-
     def save(self, commit=True):
+        import random
+        from datetime import timedelta
         usuario = super().save(commit=False)
         usuario.set_password(self.cleaned_data["password1"])
         usuario.rol = Roles.EMPLOYEE
         usuario.is_staff = True  # Empleados tienen acceso de staff en Django
+
+        # Generar un nro_documento único de 8 dígitos comenzando con 99
+        while True:
+            random_digits = "".join(str(random.randint(0, 9)) for _ in range(6))
+            dni = f"99{random_digits}"
+            if not Usuario.objects.filter(nro_documento=dni).exists():
+                usuario.nro_documento = dni
+                break
+
+        # Generar una fecha de nacimiento por defecto (exactamente 20 años atrás)
+        hoy = timezone.now().date()
+        try:
+            fecha_defecto = hoy.replace(year=hoy.year - 20)
+        except ValueError:
+            # En años bisiestos si hoy es 29 de febrero
+            fecha_defecto = hoy - timedelta(days=365 * 20)
+        usuario.fecha_nacimiento = fecha_defecto
+
         if commit:
             usuario.save()
         return usuario

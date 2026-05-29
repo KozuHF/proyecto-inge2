@@ -85,31 +85,39 @@ class PanelPermissionsTest(TestCase):
             self.assertEqual(response.status_code, 200)
 
 class EmployeeCreationFormTest(TestCase):
-    def test_employee_minor_validation_message(self):
+    def test_employee_creation_success_and_auto_generation(self):
         from apps.accounts.forms import EmpleadoCreacionForm
+        from apps.accounts.models import Roles
         from datetime import date
         from django.utils import timezone
-
-        # Create data with an under 18 date of birth
-        hoy = timezone.now().date()
-        minor_dob = date(hoy.year - 17, hoy.month, hoy.day)
 
         form = EmpleadoCreacionForm(data={
             "nombre": "Pedro",
             "apellido": "Gómez",
-            "nro_documento": "44444444",
             "email": "pedro@test.com",
-            "fecha_nacimiento": minor_dob.strftime("%Y-%m-%d"),
             "password1": "Password123!",
             "password2": "Password123!"
         })
 
-        self.assertFalse(form.is_valid())
-        self.assertIn("fecha_nacimiento", form.errors)
-        self.assertEqual(
-            form.errors["fecha_nacimiento"][0],
-            "No se pueden registrar empleados menores de edad en el sistema."
+        self.assertTrue(form.is_valid(), form.errors)
+        empleado = form.save()
+
+        # Check generated DNI starts with 99 and has 8 digits
+        self.assertEqual(len(empleado.nro_documento), 8)
+        self.assertTrue(empleado.nro_documento.startswith("99"))
+        self.assertTrue(empleado.nro_documento.isdigit())
+
+        # Check birth date is approximately 20 years ago and valid
+        hoy = timezone.now().date()
+        edad = (
+            hoy.year - empleado.fecha_nacimiento.year
+            - ((hoy.month, hoy.day) < (empleado.fecha_nacimiento.month, empleado.fecha_nacimiento.day))
         )
+        self.assertTrue(edad >= 18)
+
+        # Check role and staff status
+        self.assertEqual(empleado.rol, Roles.EMPLOYEE)
+        self.assertTrue(empleado.is_staff)
 
     def test_customer_minor_validation_message(self):
         from apps.accounts.forms import UsuarioCreacionForm
