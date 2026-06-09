@@ -1,0 +1,60 @@
+{% extends "_base.html" %}
+
+{% block title %}Historial de clases{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-4xl mx-auto">
+
+    <nav class="text-sm text-gray-400 mb-4">
+      <a href="{% url 'turnos:mis_reservas' %}" class="hover:text-gray-600">Mis reservas</a>
+      <span class="mx-2">/</span>
+      <span class="text-gray-600 font-medium">Historial</span>
+    </nav>
+
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-3xl font-extrabold text-gray-900">Historial de clases</h1>
+      <a href="{% url 'turnos:mis_reservas' %}"
+         class="text-sm font-semibold text-green-600 hover:text-green-700">← Volver a mis reservas</a>
+    </div>
+
+    {% if reservas_historicas %}
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+        <table class="w-full text-sm text-left">
+          <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3">Actividad</th>
+              <th class="px-4 py-3">Fecha</th>
+              <th class="px-4 py-3">Horario</th>
+              <th class="px-4 py-3">Tipo</th>
+              <th class="px-4 py-3">Asistencia</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for reserva in reservas_historicas %}
+              <tr>
+                <td class="px-4 py-3 font-medium text-gray-800">{{ reserva.turno.actividad }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ reserva.turno.fecha }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ reserva.turno.hora|stringformat:"02d" }}:00 – {{ reserva.turno.hora|add:1|stringformat:"02d" }}:00</td>
+                <td class="px-4 py-3 text-gray-500">{{ reserva.tipo_abono_display }}</td>
+                <td class="px-4 py-3">
+                  {% if reserva.estado_asistencia == 'presente' %}
+                    <span class="px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">Presente</span>
+                  {% elif reserva.estado_asistencia == 'ausente' %}
+                    <span class="px-2 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">Ausente</span>
+                  {% else %}
+                    <span class="px-2 py-1 text-xs font-semibold text-gray-400 bg-gray-50 rounded-full">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-gray-500">Todavía no tenés clases en tu historial.</p>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock content %}

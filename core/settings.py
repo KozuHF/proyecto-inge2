@@ -26,7 +26,36 @@ SECRET_KEY = 'django-insecure-3yug%(5agj8hd+bba&%rqms^o=u(u7!*yb+t8lj4m3ntkcc^2p
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+if DEBUG:
+    # En desarrollo aceptamos cualquier host para poder entrar desde el teléfono
+    # (u otra máquina de la red local) por la IP de la LAN, sin tener que
+    # configurar la IP a mano en cada equipo. El formulario de asistencia es del
+    # mismo origen, así que el CSRF funciona sin CSRF_TRUSTED_ORIGINS.
+    ALLOWED_HOSTS = ["*"]
+else:
+    # En producción definir acá el/los dominios reales del sitio.
+    ALLOWED_HOSTS = []
+
+# ─────────────────────────────────────────────
+#  Dirección base pública del sitio
+#
+#  Si se define (variable de entorno SITE_BASE_URL), los QR de asistencia
+#  usan SIEMPRE esta dirección, sin importar por dónde se accedió a la página
+#  (localhost, IP de la LAN o un túnel HTTPS). Útil para que el QR sea siempre
+#  alcanzable desde el teléfono.
+#
+#  Ej. con túnel:  SITE_BASE_URL=https://algo.trycloudflare.com
+#  Si queda vacío, el QR se arma según el host de la request (comportamiento
+#  por defecto).
+# ─────────────────────────────────────────────
+SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "").rstrip("/")
+
+# Si se accede vía un túnel HTTPS (ngrok/cloudflare), hay que confiar en ese
+# origen para que el POST de "Confirmar asistencia" no sea rechazado por CSRF
+# (el túnel termina el HTTPS y reenvía a Django por HTTP).
+CSRF_TRUSTED_ORIGINS = []
+if SITE_BASE_URL.startswith("https://") or SITE_BASE_URL.startswith("http://"):
+    CSRF_TRUSTED_ORIGINS.append(SITE_BASE_URL)
 
 
 # Application definition
@@ -45,6 +74,7 @@ INSTALLED_APPS = [
     'apps.turnos',
     'apps.pagos',
     'apps.creditos',
+    'apps.asistencia',
 ]
 
 MIDDLEWARE = [
@@ -161,7 +191,7 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 
 LANGUAGE_CODE = 'es-ar'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Argentina/Buenos_Aires'
 
 USE_I18N = True
 

@@ -1,0 +1,59 @@
+{% extends "accounts/panel_base.html" %}
+
+{% block title %}Escanear asistencia — Club360{% endblock title %}
+
+{% block panel_content %}
+<div class="max-w-xl mx-auto">
+  <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white mb-1">Escanear asistencia</h1>
+  <p class="text-gray-500 dark:text-gray-400 text-sm mb-6">Apuntá la cámara al QR del cliente. Al detectarlo, se abre la confirmación de asistencia.</p>
+
+  <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-sm">
+    <div id="reader" class="w-full"></div>
+    <p id="estado" class="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">Iniciando cámara…</p>
+    <p class="mt-2 text-xs text-gray-400 text-center">
+      Si la cámara no abre, puede que necesites HTTPS (o usar <code>localhost</code>). También podés pedirle al cliente el enlace del QR.
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const estado = document.getElementById("estado");
+  let yaRedirigido = false;
+
+  function onScanSuccess(decodedText) {
+    if (yaRedirigido) return;
+    // El QR contiene la URL absoluta del endpoint de marcado.
+    let destino = decodedText;
+    try {
+      const url = new URL(decodedText);
+      // Solo seguimos URLs del mismo origen, por seguridad.
+      if (url.origin !== window.location.origin || !url.pathname.includes("/asistencia/marcar/")) {
+        estado.textContent = "El código escaneado no es un QR de asistencia válido.";
+        return;
+      }
+      destino = url.href;
+    } catch (e) {
+      estado.textContent = "El código escaneado no es válido.";
+      return;
+    }
+    yaRedirigido = true;
+    estado.textContent = "QR detectado, redirigiendo…";
+    window.location.href = destino;
+  }
+
+  const html5QrCode = new Html5Qrcode("reader");
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 250, height: 250 } },
+    onScanSuccess,
+    function () { /* ignorar fallos de frame */ }
+  ).then(function () {
+    estado.textContent = "Cámara activa. Buscando QR…";
+  }).catch(function (err) {
+    estado.textContent = "No se pudo acceder a la cámara: " + err;
+  });
+});
+</script>
+{% endblock panel_content %}
