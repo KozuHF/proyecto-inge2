@@ -26,7 +26,7 @@
       {% endfor %}
     {% endif %}
 
-    <h2 class="text-lg font-bold text-gray-800 mb-3">Reservas activas</h2>
+    <h2 class="text-lg font-bold text-gray-800 mb-3">Próximas clases</h2>
     {% if reservas_activas %}
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
         <table class="w-full text-sm text-left">
@@ -87,6 +87,12 @@
                         Pagar
                       </a>
                     {% endif %}
+                    {% if reserva.qr_disponible %}
+                      <a href="{% url 'asistencia:qr_reserva' reserva.pk %}"
+                         class="text-xs text-white bg-gray-800 hover:bg-gray-900 font-semibold px-3 py-1.5 rounded-lg transition">
+                        Ver QR
+                      </a>
+                    {% endif %}
                     <form method="post" action="{% url 'turnos:cancelar_reserva' reserva.pk %}"
                           onsubmit="return confirm('¿Confirmás la cancelación?')">
                       {% csrf_token %}
@@ -100,7 +106,19 @@
         </table>
       </div>
     {% else %}
-      <p class="text-gray-500 mb-8">No tenés reservas activas.</p>
+      <p class="text-gray-500 mb-8">No tenés clases próximas.</p>
+    {% endif %}
+
+    {% if tiene_historial %}
+      <div class="mb-8">
+        <a href="{% url 'turnos:historial_clases' %}"
+           class="inline-flex items-center gap-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 px-4 py-2 rounded-lg transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Ver historial de clases
+        </a>
+      </div>
     {% endif %}
 
     {% if grupos_mensuales %}

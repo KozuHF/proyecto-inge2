@@ -297,12 +297,19 @@ def mis_reservas(request):
             ),
         )
 
-    reservas_activas = (
-        Reserva.objects
-        .filter(usuario=request.user, estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA])
-        .select_related("turno", "turno__actividad", "grupo_mensual")
-        .order_by("turno__fecha", "turno__hora")
-    )
+    from apps.asistencia import services as asistencia_services
+
+    # Solo las próximas (lo accionable). Las clases que ya pasaron van a una
+    # página de historial aparte. "Pasó" = la ventana de asistencia cerró.
+    reservas_proximas = []
+    tiene_historial = False
+    for reserva in _reservas_activas_usuario(request.user):
+        if asistencia_services.ventana_cerrada(reserva.turno):
+            tiene_historial = True
+        else:
+            reserva.qr_disponible = asistencia_services.qr_disponible(reserva)
+            reservas_proximas.append(reserva)
+
     reservas_canceladas = (
         Reserva.objects
         .filter(usuario=request.user, estado=Reserva.Estado.CANCELADA)
@@ -321,9 +328,49 @@ def mis_reservas(request):
     )
 
     return render(request, "turnos/mis_reservas.html", {
-        "reservas_activas": reservas_activas,
+        "reservas_activas": reservas_proximas,
+        "tiene_historial": tiene_historial,
         "reservas_canceladas": reservas_canceladas,
         "grupos_mensuales": grupos_mensuales,
+    })
+
+
+def _reservas_activas_usuario(usuario):
+    """Reservas activas (confirmadas o en espera) del usuario, ordenadas por fecha."""
+    return list(
+        Reserva.objects
+        .filter(usuario=usuario, estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA])
+        .select_related("turno", "turno__actividad", "grupo_mensual")
+        .order_by("turno__fecha", "turno__hora")
+    )
+
+
+@login_required
+def historial_clases(request):
+    """Página de historial: clases del usuario que ya pasaron, con su asistencia."""
+    from apps.asistencia import services as asistencia_services
+    from apps.asistencia.models import Asistencia
+
+    historicas = [
+        r for r in _reservas_activas_usuario(request.user)
+        if asistencia_services.ventana_cerrada(r.turno)
+    ]
+
+    presentes = dict(
+        Asistencia.objects
+        .filter(reserva__in=historicas)
+        .values_list("reserva_id", "presente")
+    )
+    for reserva in historicas:
+        if reserva.estado == Reserva.Estado.CONFIRMADA and reserva.esta_pagada:
+            reserva.estado_asistencia = "presente" if presentes.get(reserva.id, False) else "ausente"
+        else:
+            reserva.estado_asistencia = "no_aplica"
+
+    historicas.reverse()  # más recientes primero
+
+    return render(request, "turnos/historial_clases.html", {
+        "reservas_historicas": historicas,
     })
 
 

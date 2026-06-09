@@ -12,6 +12,7 @@ urlpatterns = [
     path("reservar/fechas/", views.paso_seleccion_fechas, name="paso_seleccion_fechas"),
 
     path("mis-reservas/", views.mis_reservas, name="mis_reservas"),
+    path("mis-reservas/historial/", views.historial_clases, name="historial_clases"),
     path("mis-reservas/<int:pk>/cancelar/", views.cancelar_reserva, name="cancelar_reserva"),
     path("grupos/<int:pk>/cancelar/", views.cancelar_grupo_mensual, name="cancelar_grupo_mensual"),
 

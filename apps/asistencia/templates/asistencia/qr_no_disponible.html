@@ -1,0 +1,20 @@
+{% extends "_base.html" %}
+
+{% block title %}QR no disponible — Club360{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-md mx-auto">
+    <div class="bg-white border border-amber-200 rounded-2xl shadow-sm p-8 text-center">
+      <div class="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+      </div>
+      <h1 class="text-xl font-extrabold text-gray-900 mb-2">QR no disponible</h1>
+      <p class="text-sm text-gray-500 mb-6">{{ mensaje }}</p>
+      <a href="{% url 'turnos:mis_reservas' %}" class="inline-block text-sm font-semibold text-green-600 hover:text-green-700">← Volver a mis reservas</a>
+    </div>
+  </div>
+</div>
+{% endblock content %}

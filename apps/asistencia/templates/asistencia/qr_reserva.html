@@ -1,0 +1,42 @@
+{% extends "_base.html" %}
+
+{% block title %}QR de asistencia — Club360{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-md mx-auto">
+
+    <nav class="text-sm text-gray-400 mb-6">
+      <a href="{% url 'turnos:mis_reservas' %}" class="hover:text-gray-600">Mis reservas</a>
+      <span class="mx-2">/</span>
+      <span class="text-gray-600 font-medium">QR de asistencia</span>
+    </nav>
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8 text-center">
+      <h1 class="text-2xl font-extrabold text-gray-900 mb-1">QR de asistencia</h1>
+      <p class="text-sm text-gray-500 mb-6">Mostrale este código al empleado para registrar tu asistencia el día de la clase.</p>
+
+      {% if asistencia.presente %}
+        <div class="mb-6 inline-flex items-center gap-2 px-3 py-1.5 bg-green-100 text-green-800 text-sm font-semibold rounded-full">
+          ✓ Asistencia registrada
+          {% if asistencia.fecha_registro %}<span class="font-normal text-green-700">· {{ asistencia.fecha_registro|date:"d/m/Y H:i" }}</span>{% endif %}
+        </div>
+      {% endif %}
+
+      <div class="flex justify-center mb-6">
+        <div class="p-4 bg-white border border-gray-200 rounded-xl w-64 h-64 flex items-center justify-center">
+          {{ qr_svg }}
+        </div>
+      </div>
+
+      <div class="text-left bg-gray-50 rounded-xl p-4 text-sm text-gray-700 space-y-1">
+        <div class="flex justify-between"><span class="text-gray-400">Actividad</span><span class="font-semibold">{{ reserva.turno.actividad.get_nombre_display }}</span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Fecha</span><span class="font-semibold">{{ reserva.turno.fecha|date:"d/m/Y" }}</span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Horario</span><span class="font-semibold">{{ reserva.turno.hora|stringformat:"02d" }}:00</span></div>
+      </div>
+
+      <a href="{% url 'turnos:mis_reservas' %}" class="inline-block mt-6 text-sm font-semibold text-green-600 hover:text-green-700">← Volver a mis reservas</a>
+    </div>
+  </div>
+</div>
+{% endblock content %}
