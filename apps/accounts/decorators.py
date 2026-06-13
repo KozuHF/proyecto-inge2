@@ -1,13 +1,20 @@
 from functools import wraps
-from django.core.exceptions import PermissionDenied
+
+from django.contrib import messages
+from django.contrib.auth.views import redirect_to_login
+from django.shortcuts import redirect
+from django.utils.translation import gettext_lazy as _
 
 
 def rol_requerido(roles_permitidos):
     """
-    Decorador para vistas de Django que restringe el acceso según el rol del usuario.
-    
-    Acepta una cadena única (ej: 'admin') o una lista/tupla (ej: ['admin', 'employee']).
-    Si el usuario no está autenticado o no posee el rol requerido, lanza PermissionDenied (HTTP 403).
+    Decorador que restringe el acceso a una vista según el rol del usuario.
+
+    Acepta una cadena ('admin') o una lista/tupla (['admin', 'employee']).
+
+    - Si el usuario no está autenticado: lo manda al login (con `next`).
+    - Si está autenticado pero no tiene el rol: lo redirige al inicio con un
+      mensaje, en vez de mostrar un error 403.
     """
     if isinstance(roles_permitidos, str):
         roles_permitidos = [roles_permitidos]
@@ -15,8 +22,11 @@ def rol_requerido(roles_permitidos):
     def decorator(view_func):
         @wraps(view_func)
         def _wrapped_view(request, *args, **kwargs):
-            if request.user.is_authenticated and request.user.rol in roles_permitidos:
+            if not request.user.is_authenticated:
+                return redirect_to_login(request.get_full_path())
+            if getattr(request.user, "rol", None) in roles_permitidos:
                 return view_func(request, *args, **kwargs)
-            raise PermissionDenied
+            messages.error(request, _("No tenés permiso para acceder a esa sección."))
+            return redirect("home")
         return _wrapped_view
     return decorator

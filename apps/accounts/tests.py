@@ -46,35 +46,25 @@ class PanelPermissionsTest(TestCase):
 
     def test_client_user_access(self):
         self.client.force_login(self.client_user)
-        
-        # Access to panel_control should be forbidden (403)
-        response = self.client.get(reverse('panel_control'))
-        self.assertEqual(response.status_code, 403)
 
-        # Access to list and create employee should be forbidden (403)
-        for url_name in ['accounts:lista', 'accounts:crear_empleado']:
+        # Sin permiso: redirige al inicio (no 403)
+        for url_name in ['panel_control', 'accounts:lista', 'accounts:crear_empleado', 'panel_turnos']:
             response = self.client.get(reverse(url_name))
-            self.assertEqual(response.status_code, 403)
-
-        # Access to panel_turnos should be forbidden (403)
-        response = self.client.get(reverse('panel_turnos'))
-        self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.url, reverse('home'))
 
     def test_employee_access(self):
         self.client.force_login(self.employee)
 
-        # Access to panel_control should be allowed (200)
+        # Panel general: permitido (200)
         response = self.client.get(reverse('panel_control'))
         self.assertEqual(response.status_code, 200)
 
-        # Access to list and create employee should be forbidden (403)
-        for url_name in ['accounts:lista', 'accounts:crear_empleado']:
+        # Secciones solo de admin: redirige al inicio (no 403)
+        for url_name in ['accounts:lista', 'accounts:crear_empleado', 'panel_turnos']:
             response = self.client.get(reverse(url_name))
-            self.assertEqual(response.status_code, 403)
-
-        # Access to panel_turnos should be forbidden (403)
-        response = self.client.get(reverse('panel_turnos'))
-        self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.url, reverse('home'))
 
     def test_admin_access(self):
         self.client.force_login(self.admin)
@@ -83,6 +73,62 @@ class PanelPermissionsTest(TestCase):
         for url_name in ['panel_control', 'accounts:lista', 'accounts:crear_empleado', 'panel_turnos']:
             response = self.client.get(reverse(url_name))
             self.assertEqual(response.status_code, 200)
+
+
+class AccesoCuentaAjenaTest(TestCase):
+    """Un usuario no puede acceder a la cuenta de otro por URL."""
+
+    def setUp(self):
+        self.admin = Usuario.objects.create_user(
+            email="admin2@test.com", nombre="Admin", apellido="Dos",
+            nro_documento="91000001", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.ADMIN, is_staff=True,
+        )
+        self.ana = Usuario.objects.create_user(
+            email="ana@test.com", nombre="Ana", apellido="Uno",
+            nro_documento="91000002", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.beto = Usuario.objects.create_user(
+            email="beto@test.com", nombre="Beto", apellido="Dos",
+            nro_documento="91000003", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+
+    def test_detalle_cuenta_ajena_redirige(self):
+        self.client.force_login(self.ana)
+        resp = self.client.get(reverse("accounts:detalle", kwargs={"pk": self.beto.pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("home"))
+
+    def test_editar_cuenta_ajena_redirige(self):
+        self.client.force_login(self.ana)
+        resp = self.client.get(reverse("accounts:editar", kwargs={"pk": self.beto.pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("home"))
+
+    def test_propia_cuenta_accesible(self):
+        self.client.force_login(self.ana)
+        self.assertEqual(
+            self.client.get(reverse("accounts:editar", kwargs={"pk": self.ana.pk})).status_code, 200
+        )
+        self.assertEqual(
+            self.client.get(reverse("accounts:detalle", kwargs={"pk": self.ana.pk})).status_code, 200
+        )
+
+    def test_admin_ve_cualquier_cuenta(self):
+        self.client.force_login(self.admin)
+        self.assertEqual(
+            self.client.get(reverse("accounts:detalle", kwargs={"pk": self.ana.pk})).status_code, 200
+        )
+        self.assertEqual(
+            self.client.get(reverse("accounts:editar", kwargs={"pk": self.ana.pk})).status_code, 200
+        )
+
+    def test_anonimo_va_a_login(self):
+        resp = self.client.get(reverse("accounts:detalle", kwargs={"pk": self.ana.pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login/", resp.url)
 
 class EmployeeCreationFormTest(TestCase):
     def test_employee_creation_success_and_auto_generation(self):

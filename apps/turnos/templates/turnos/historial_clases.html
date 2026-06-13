@@ -34,7 +34,7 @@
             {% for reserva in reservas_historicas %}
               <tr>
                 <td class="px-4 py-3 font-medium text-gray-800">{{ reserva.turno.actividad }}</td>
-                <td class="px-4 py-3 text-gray-600">{{ reserva.turno.fecha }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ reserva.turno.fecha|date:"d/m/Y" }}</td>
                 <td class="px-4 py-3 text-gray-600">{{ reserva.turno.hora|stringformat:"02d" }}:00 – {{ reserva.turno.hora|add:1|stringformat:"02d" }}:00</td>
                 <td class="px-4 py-3 text-gray-500">{{ reserva.tipo_abono_display }}</td>
                 <td class="px-4 py-3">

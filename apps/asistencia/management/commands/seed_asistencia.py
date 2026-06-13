@@ -41,6 +41,9 @@ class Command(BaseCommand):
                             help="Elimina los objetos de prueba previos antes de recrearlos.")
         parser.add_argument("--hora", type=int, default=None,
                             help="Hora del turno de hoy (8..21). Por defecto usa la hora actual acotada al rango.")
+        parser.add_argument("--abono-vencido", action="store_true",
+                            help="Además crea un abono mensual impago con el plazo ya vencido "
+                                 "(para probar que el QR se bloquea).")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -89,14 +92,19 @@ class Command(BaseCommand):
 
         asistencia = services.obtener_o_crear_asistencia(reserva)
 
+        # ── Escenario 2: abono mensual con pago PENDIENTE ─────────────────
+        # El abonado tiene QR desde que reserva (paga hasta el día 10).
+        reserva_abono, asistencia_abono = self._crear_abono_pendiente(cliente, hoy, hora)
+
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS("=== SEED DE ASISTENCIA COMPLETADO ==="))
         self.stdout.write(self.style.SUCCESS(f"Cliente  -> {CLIENTE_EMAIL}  /  {CLIENTE_PASSWORD}"))
         self.stdout.write(self.style.SUCCESS(f"Empleado -> {EMPLEADO_EMAIL} /  {EMPLEADO_PASSWORD}"))
         self.stdout.write("")
+        self.stdout.write("— Turno individual (pagado por completo) —")
         self.stdout.write(f"Actividad : {actividad.get_nombre_display()}")
         self.stdout.write(f"Turno     : {hoy.strftime('%d/%m/%Y')} a las {hora:02d}:00 (HOY)")
-        self.stdout.write(f"Reserva   : id={reserva.pk} (confirmada, pagada por completo)")
+        self.stdout.write(f"Reserva   : id={reserva.pk}")
         self.stdout.write(self.style.HTTP_INFO(
             f"QR (cliente) : /asistencia/reserva/{reserva.pk}/qr/"
         ))
@@ -104,10 +112,112 @@ class Command(BaseCommand):
             f"Marcar (empleado): /asistencia/marcar/{asistencia.codigo}/"
         ))
         self.stdout.write("")
+        self.stdout.write("— Abono mensual (pago PENDIENTE: QR disponible igual) —")
+        self.stdout.write(f"Actividad : {reserva_abono.turno.actividad.get_nombre_display()}")
+        self.stdout.write(f"Turno     : {hoy.strftime('%d/%m/%Y')} a las {reserva_abono.turno.hora:02d}:00 (HOY)")
+        self.stdout.write(f"Reserva   : id={reserva_abono.pk}")
+        self.stdout.write(self.style.HTTP_INFO(
+            f"QR (cliente) : /asistencia/reserva/{reserva_abono.pk}/qr/"
+        ))
+        self.stdout.write(self.style.HTTP_INFO(
+            f"Marcar (empleado): /asistencia/marcar/{asistencia_abono.codigo}/"
+        ))
+        if options["abono_vencido"]:
+            reserva_venc = self._crear_abono_vencido(cliente)
+            self.stdout.write("")
+            self.stdout.write("— Abono mensual con PLAZO VENCIDO (QR bloqueado) —")
+            self.stdout.write(f"Turno     : {reserva_venc.turno.fecha.strftime('%d/%m/%Y')} (mes vencido)")
+            self.stdout.write(f"Reserva   : id={reserva_venc.pk}")
+            self.stdout.write(self.style.HTTP_INFO(
+                f"QR (cliente) : /asistencia/reserva/{reserva_venc.pk}/qr/  ->  debe mostrar 'QR no disponible'"
+            ))
+
+        self.stdout.write("")
         self.stdout.write(
             "Probá: entrá como cliente y abrí 'Ver QR' en Mis reservas; "
             "luego, como empleado, escaneá o abrí la URL de marcado."
         )
+
+    def _crear_abono_vencido(self, cliente):
+        """
+        Abono mensual del mes pasado, con un turno el día 5 (rango 1–10) e impago.
+        Como ya pasó el día 10 de ese mes, el plazo está vencido y el QR se bloquea.
+        """
+        from datetime import date
+        from apps.turnos.models import GrupoReservaMensual
+
+        hoy = timezone.localdate()
+        mes = hoy.month - 1 or 12
+        anio = hoy.year - (1 if hoy.month == 1 else 0)
+        fecha = date(anio, mes, 5)  # día 1–10 → aplica el plazo del día 10
+
+        actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.BASKET, defaults={"cupos": 20, "precio_turno": 5000}
+        )
+        turno, _ = Turno.objects.get_or_create(
+            actividad=actividad, fecha=fecha, hora=10,
+            defaults={"cupos": actividad.cupos},
+        )
+        grupo, _ = GrupoReservaMensual.objects.get_or_create(
+            usuario=cliente, actividad=actividad, dia_semana=fecha.weekday(),
+            hora=10, anio=anio, mes=mes, defaults={"regla_cobro": "primera_quincena"},
+        )
+        reserva, creada = Reserva.objects.get_or_create(
+            usuario=cliente, turno=turno,
+            defaults={
+                "estado": Reserva.Estado.CONFIRMADA,
+                "estado_pago": Reserva.EstadoPago.PENDIENTE,
+                "tipo_reserva": Reserva.TipoReserva.VARIOS,
+                "grupo_mensual": grupo,
+            },
+        )
+        if not creada:
+            reserva.estado = Reserva.Estado.CONFIRMADA
+            reserva.estado_pago = Reserva.EstadoPago.PENDIENTE
+            reserva.tipo_reserva = Reserva.TipoReserva.VARIOS
+            reserva.grupo_mensual = grupo
+            reserva.save(update_fields=["estado", "estado_pago", "tipo_reserva", "grupo_mensual"])
+        return reserva
+
+    def _crear_abono_pendiente(self, cliente, hoy, hora):
+        """Reserva de abono mensual impaga, con turno HOY (otra actividad)."""
+        from apps.turnos.abono_mensual import clasificar_regla_abono
+        from apps.turnos.models import GrupoReservaMensual
+
+        actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.VOLEY, defaults={"cupos": 20, "precio_turno": 5000}
+        )
+        turno, _ = Turno.objects.get_or_create(
+            actividad=actividad, fecha=hoy, hora=hora,
+            defaults={"cupos": actividad.cupos},
+        )
+        grupo, _ = GrupoReservaMensual.objects.get_or_create(
+            usuario=cliente,
+            actividad=actividad,
+            dia_semana=hoy.weekday(),
+            hora=hora,
+            anio=hoy.year,
+            mes=hoy.month,
+            defaults={"regla_cobro": clasificar_regla_abono([hoy])},
+        )
+        reserva, creada = Reserva.objects.get_or_create(
+            usuario=cliente, turno=turno,
+            defaults={
+                "estado": Reserva.Estado.CONFIRMADA,
+                "estado_pago": Reserva.EstadoPago.PENDIENTE,
+                "tipo_reserva": Reserva.TipoReserva.VARIOS,
+                "grupo_mensual": grupo,
+            },
+        )
+        if not creada:
+            reserva.estado = Reserva.Estado.CONFIRMADA
+            reserva.estado_pago = Reserva.EstadoPago.PENDIENTE
+            reserva.tipo_reserva = Reserva.TipoReserva.VARIOS
+            reserva.grupo_mensual = grupo
+            reserva.save(update_fields=["estado", "estado_pago", "tipo_reserva", "grupo_mensual"])
+
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        return reserva, asistencia
 
     # ------------------------------------------------------------------
     def _crear_usuario(self, email, password, nombre, apellido, doc, rol, *, staff):

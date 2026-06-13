@@ -52,28 +52,69 @@ def qr_disponible(reserva) -> bool:
     """
     Indica si al cliente todavía se le debe mostrar el QR de la reserva.
 
-    Se muestra mientras la reserva sea elegible (confirmada + pagada por
-    completo) y la ventana de asistencia no haya cerrado. Una vez que pasó el
-    horario de la clase, el QR ya no sirve y deja de mostrarse.
+    Se muestra mientras la reserva sea elegible, el plazo de pago del abono no
+    haya vencido y la ventana de asistencia no haya cerrado. Una vez que pasó
+    el horario de la clase, el QR ya no sirve y deja de mostrarse.
     """
-    return _reserva_elegible(reserva) and not ventana_cerrada(reserva.turno)
+    return (
+        _reserva_elegible(reserva)
+        and not _abono_con_plazo_vencido(reserva)
+        and not ventana_cerrada(reserva.turno)
+    )
 
 
 def _reserva_elegible(reserva: Reserva) -> bool:
+    """
+    Reglas de elegibilidad del QR según tipo de reserva:
+    - Abonado mensual: elegible desde que reserva (tiene hasta el día 10 del
+      mes para pagar el abono).
+    - Turno individual: elegible solo con el 100% pagado (señas no alcanzan).
+    """
+    if reserva.estado != Reserva.Estado.CONFIRMADA:
+        return False
     return (
-        reserva.estado == Reserva.Estado.CONFIRMADA
-        and reserva.estado_pago == Reserva.EstadoPago.PAGADO
+        reserva.estado_pago == Reserva.EstadoPago.PAGADO
+        or reserva.es_abonado_mensual
+    )
+
+
+def _abono_con_plazo_vencido(reserva: Reserva) -> bool:
+    """
+    True si la reserva es de un abono impago cuyo plazo de pago ya venció
+    (día 11 en adelante). Chequeo defensivo: la sanción automática que cancela
+    los turnos puede no haber corrido todavía.
+    """
+    if not reserva.es_abonado_mensual:
+        return False
+    if reserva.estado_pago == Reserva.EstadoPago.PAGADO:
+        return False
+    from apps.turnos.abono_mensual import plazo_pago_vencido
+
+    return plazo_pago_vencido(reserva.grupo_mensual)
+
+
+def pago_pendiente(reserva: Reserva) -> bool:
+    """Abonado elegible pero con el abono aún impago (para avisos en la UI)."""
+    return (
+        reserva.es_abonado_mensual
+        and reserva.estado_pago != Reserva.EstadoPago.PAGADO
     )
 
 
 def obtener_o_crear_asistencia(reserva: Reserva) -> Asistencia:
     """
-    Devuelve (creando si hace falta) la Asistencia de una reserva pagada por
-    completo y confirmada. Si la reserva no es elegible, lanza ValidationError.
+    Devuelve (creando si hace falta) la Asistencia de una reserva elegible.
+    Si la reserva no es elegible, lanza ValidationError.
     """
     if not _reserva_elegible(reserva):
         raise AsistenciaNoElegible(
-            _("El QR se genera solo para clases confirmadas y pagadas por completo.")
+            _("El QR se genera para abonos mensuales reservados y para turnos "
+              "individuales pagados por completo.")
+        )
+    if _abono_con_plazo_vencido(reserva):
+        raise AsistenciaNoElegible(
+            _("El plazo de pago del abono mensual venció (día 10). "
+              "Regularizá el pago para acceder al QR.")
         )
     asistencia, _creada = Asistencia.objects.get_or_create(reserva=reserva)
     return asistencia
@@ -85,7 +126,9 @@ def marcar_asistencia(codigo, empleado) -> ResultadoMarcado:
     Marca la asistencia identificada por `codigo` (UUID del QR).
 
     Reglas:
-    - La reserva debe estar confirmada y pagada por completo.
+    - La reserva debe estar confirmada y cumplir las condiciones de pago:
+      abonos mensuales valen desde la reserva (mientras el plazo del día 10
+      no esté vencido); turnos individuales requieren el 100% pagado.
     - Solo se puede marcar dentro de la ventana de asistencia: desde 30 min
       antes del inicio de la clase y hasta que la clase termina.
     - Es idempotente y seguro ante concurrencia: bloquea la fila
@@ -110,7 +153,14 @@ def marcar_asistencia(codigo, empleado) -> ResultadoMarcado:
     if not _reserva_elegible(reserva):
         return ResultadoMarcado(
             exito=False, estado="no_elegible", asistencia=asistencia,
-            mensaje=str(_("La reserva no está confirmada o no está pagada por completo.")),
+            mensaje=str(_("La reserva no está confirmada o no cumple las condiciones de pago.")),
+        )
+
+    if _abono_con_plazo_vencido(reserva):
+        return ResultadoMarcado(
+            exito=False, estado="no_elegible", asistencia=asistencia,
+            mensaje=str(_("El abono mensual no fue pagado en término (venció el día 10). "
+                          "No se puede registrar la asistencia.")),
         )
 
     if asistencia.presente:

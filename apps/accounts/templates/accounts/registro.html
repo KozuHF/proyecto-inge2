@@ -68,10 +68,13 @@
                         {% include "pagos/_campos_tarjeta.html" with form=tarjeta_form %}
                     </div>
 
-                    <button type="submit"
-                        class="w-full text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition">
+                    <button type="submit" id="btn-crear-cuenta"
+                        class="hidden w-full mt-8 text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-semibold rounded-lg text-sm px-5 py-3 text-center transition">
                         Crear cuenta
                     </button>
+                    <p id="btn-crear-ayuda" class="mt-8 text-xs text-gray-400 text-center">
+                        Completá todos los campos sin errores para que aparezca el botón de crear cuenta.
+                    </p>
                 </form>
 
                 <p class="mt-6 text-center text-sm text-gray-500">
@@ -90,107 +93,169 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const form = document.querySelector('form');
-    const nroDoc = document.getElementById('id_nro_documento');
-    const nombre = document.getElementById('id_nombre');
-    const apellido = document.getElementById('id_apellido');
+    const btnCrear = document.getElementById('btn-crear-cuenta');
+    const btnAyuda = document.getElementById('btn-crear-ayuda');
+    const REQ = 'Este campo es obligatorio.';
+    const get = (id) => document.getElementById(id);
 
-    function setFieldError(inputEl, hasError, errorMsgText) {
-        // Remove any server-side errors for this field once the user interacts
-        const serverErrors = inputEl.parentNode.querySelectorAll('p.text-red-600:not(.js-error-msg)');
-        serverErrors.forEach(el => el.remove());
+    function passwordFuerte(v) {
+        return v.length >= 8 && /[A-Z]/.test(v) && /[a-z]/.test(v) &&
+               /[0-9]/.test(v) && /[!@#$%^&*()_+\-=\[\]{}|;':",.\/<>?]/.test(v);
+    }
+    function esMayorDeEdad(s) {
+        const f = new Date(s + 'T00:00:00');
+        if (isNaN(f)) return false;
+        const h = new Date();
+        let e = h.getFullYear() - f.getFullYear();
+        if (h.getMonth() < f.getMonth() ||
+            (h.getMonth() === f.getMonth() && h.getDate() < f.getDate())) e -= 1;
+        return e >= 18;
+    }
 
-        let errorMsg = inputEl.parentNode.querySelector('.js-error-msg');
-        if (hasError) {
-            inputEl.classList.add('border-red-500');
-            inputEl.classList.remove('focus:ring-green-500', 'focus:border-green-500');
-            if (!errorMsg) {
-                errorMsg = document.createElement('p');
-                errorMsg.className = 'mt-1 text-sm text-red-600 js-error-msg';
-                inputEl.parentNode.appendChild(errorMsg);
+    // Cada campo: su input y un validador que devuelve el texto de error o null.
+    const campos = [
+        { el: get('id_nombre'), validate: el => {
+            const v = el.value.trim();
+            if (v === '') return REQ;
+            return /[0-9]/.test(v) ? 'El nombre no puede contener números.' : null;
+        }},
+        { el: get('id_apellido'), validate: el => {
+            const v = el.value.trim();
+            if (v === '') return REQ;
+            return /[0-9]/.test(v) ? 'El apellido no puede contener números.' : null;
+        }},
+        { el: get('id_nro_documento'), validate: el => {
+            const v = el.value.trim();
+            if (v === '') return REQ;
+            return /^[0-9]{8}$/.test(v) ? null : 'El documento debe tener exactamente 8 números.';
+        }},
+        { el: get('id_email'), validate: el => {
+            const v = el.value.trim();
+            if (v === '') return REQ;
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'Ingresá un email válido.';
+        }},
+        { el: get('id_fecha_nacimiento'), validate: el => {
+            if (el.value === '') return REQ;
+            return esMayorDeEdad(el.value) ? null : 'Debés ser mayor de 18 años.';
+        }},
+        { el: get('id_password1'), validate: el => {
+            if (el.value === '') return REQ;
+            return passwordFuerte(el.value) ? null :
+                'Mínimo 8 caracteres con mayúscula, minúscula, número y carácter especial.';
+        }},
+        { el: get('id_password2'), validate: el => {
+            if (el.value === '') return REQ;
+            const p1 = get('id_password1');
+            return (p1 && el.value === p1.value) ? null : 'Las contraseñas no coinciden.';
+        }},
+        { el: get('id_acepta_sin_impedimentos'), checkbox: true, validate: el =>
+            el.checked ? null : 'Debés aceptar esta condición para registrarte.' },
+        { el: get('id_numero_tarjeta'), validate: el => {
+            const v = el.value.replace(/\D/g, '');
+            if (v === '') return REQ;
+            return v.length === 16 ? null : 'Ingresá los 16 dígitos de la tarjeta.';
+        }},
+        { el: get('id_titular'), validate: el => el.value.trim() === '' ? REQ : null },
+        { el: get('id_vencimiento'), validate: el => {
+            const v = el.value.trim();
+            if (v === '') return REQ;
+            const m = v.match(/^(0[1-9]|1[0-2])\/([0-9]{2}|[0-9]{4})$/);
+            if (!m) return 'Usá el formato MM/AA (ej: 06/29).';
+            const mes = parseInt(m[1], 10);
+            const anio = m[2].length === 2 ? 2000 + parseInt(m[2], 10) : parseInt(m[2], 10);
+            const hoy = new Date();
+            const curAnio = hoy.getFullYear(), curMes = hoy.getMonth() + 1;
+            if (anio < curAnio || (anio === curAnio && mes < curMes)) return 'La tarjeta está vencida.';
+            if (anio > curAnio + 15) return 'La fecha de vencimiento no es válida.';
+            return null;
+        }},
+        { el: get('id_cvv'), validate: el => {
+            const v = el.value.trim();
+            if (v === '') return REQ;
+            return /^[0-9]{3}$/.test(v) ? null : 'El código debe tener 3 dígitos.';
+        }},
+    ].filter(c => c.el);
+
+    const tocados = new Set();
+
+    function contenedor(el) {
+        let c = el.closest('div');
+        if (c && c.classList.contains('relative')) c = c.parentElement;  // campo tarjeta
+        return c;
+    }
+
+    function mostrarError(cfg, msg) {
+        const el = cfg.el, c = contenedor(el);
+        if (!c) return;
+        // Si el campo lo maneja flatpickr, el input visible es el "altInput".
+        const visible = (el._flatpickr && el._flatpickr.altInput) ? el._flatpickr.altInput : el;
+        // Reemplaza cualquier error del servidor por el nuestro, sin duplicar.
+        c.querySelectorAll('p.text-red-600:not(.js-error-msg)').forEach(p => p.remove());
+        let p = c.querySelector('.js-error-msg');
+        if (msg) {
+            if (!cfg.checkbox) {
+                visible.classList.add('border-red-500');
+                visible.classList.remove('focus:ring-green-500', 'focus:border-green-500');
             }
-            errorMsg.textContent = errorMsgText;
+            if (!p) {
+                p = document.createElement('p');
+                p.className = 'mt-1 text-sm text-red-600 js-error-msg';
+                c.appendChild(p);
+            }
+            p.textContent = msg;
         } else {
-            inputEl.classList.remove('border-red-500');
-            inputEl.classList.add('focus:ring-green-500', 'focus:border-green-500');
-            if (errorMsg) {
-                errorMsg.remove();
+            if (!cfg.checkbox) {
+                visible.classList.remove('border-red-500');
+                visible.classList.add('focus:ring-green-500', 'focus:border-green-500');
             }
+            if (p) p.remove();
         }
     }
 
-    function validarDni() {
-        if (!nroDoc) return true;
-        const val = nroDoc.value.trim();
-        if (val.length === 0) {
-            setFieldError(nroDoc, false);
-            return true;
-        }
-        const invalid = val.length !== 8 || /[^0-9]/.test(val);
-        setFieldError(nroDoc, invalid, 'El documento debe tener exactamente 8 números.');
-        return !invalid;
+    function refrescar() {
+        // Pinta/limpia el error de cada campo ya tocado.
+        campos.forEach(cfg => { if (tocados.has(cfg.el)) mostrarError(cfg, cfg.validate(cfg.el)); });
+        // El botón se muestra solo si TODOS los campos son válidos.
+        const todoValido = campos.every(cfg => cfg.validate(cfg.el) === null);
+        if (btnCrear) btnCrear.classList.toggle('hidden', !todoValido);
+        if (btnAyuda) btnAyuda.classList.toggle('hidden', todoValido);
     }
 
-    function validarNombre() {
-        if (!nombre) return true;
-        const val = nombre.value.trim();
-        const invalid = val.length > 0 && /[0-9]/.test(val);
-        setFieldError(nombre, invalid, 'El nombre no puede contener números.');
-        return !invalid;
-    }
+    campos.forEach(cfg => {
+        const evtVivo = cfg.checkbox ? 'change' : 'input';
+        cfg.el.addEventListener(evtVivo, () => { if (cfg.checkbox) tocados.add(cfg.el); refrescar(); });
+        // 'change' marca el campo como tocado (cubre el date picker de flatpickr,
+        // que dispara 'change' al elegir una fecha).
+        cfg.el.addEventListener('change', () => { tocados.add(cfg.el); refrescar(); });
+        cfg.el.addEventListener('blur', () => { tocados.add(cfg.el); refrescar(); });
+        // Si el campo viene con valor o con error del servidor (POST fallido),
+        // se considera "tocado" para mostrar su estado al cargar.
+        const c = contenedor(cfg.el);
+        const errorServer = c && c.querySelector('p.text-red-600');
+        const conValor = cfg.checkbox ? cfg.el.checked : cfg.el.value.trim() !== '';
+        if (conValor || errorServer) tocados.add(cfg.el);
+    });
 
-    function validarApellido() {
-        if (!apellido) return true;
-        const val = apellido.value.trim();
-        const invalid = val.length > 0 && /[0-9]/.test(val);
-        setFieldError(apellido, invalid, 'El apellido no puede contener números.');
-        return !invalid;
-    }
+    const nroDoc = get('id_nro_documento');
+    if (nroDoc) { nroDoc.setAttribute('maxlength', '8'); nroDoc.setAttribute('inputmode', 'numeric'); }
 
-    if (nroDoc) {
-        nroDoc.setAttribute('maxlength', '8');
-        nroDoc.setAttribute('inputmode', 'numeric');
-        nroDoc.removeAttribute('required');
-
-        nroDoc.addEventListener('input', function() {
-            this.value = this.value.replace(/[^0-9]/g, '');
-            validarDni();
-        });
-    }
-
-    if (nombre) {
-        nombre.removeAttribute('required');
-        nombre.addEventListener('input', function() {
-            this.value = this.value.replace(/[0-9]/g, '');
-            validarNombre();
-        });
-    }
-
-    if (apellido) {
-        apellido.removeAttribute('required');
-        apellido.addEventListener('input', function() {
-            this.value = this.value.replace(/[0-9]/g, '');
-            validarApellido();
-        });
-    }
-
+    // Red de seguridad: el botón está oculto si algo falla, pero por las dudas
+    // (Enter, autofill) validamos todo en el submit.
     if (form) {
-        form.addEventListener('submit', function(event) {
-            let isValid = true;
-            if (nroDoc && !validarDni()) isValid = false;
-            if (nombre && !validarNombre()) isValid = false;
-            if (apellido && !validarApellido()) isValid = false;
-
-            if (!isValid) {
-                event.preventDefault();
-                // Focus the first invalid element
-                const firstInvalid = document.querySelector('.border-red-500');
-                if (firstInvalid) firstInvalid.focus();
-                return false;
+        form.addEventListener('submit', function (e) {
+            campos.forEach(cfg => tocados.add(cfg.el));
+            refrescar();
+            if (!campos.every(cfg => cfg.validate(cfg.el) === null)) {
+                e.preventDefault();
+                const primero = document.querySelector('.border-red-500, .js-error-msg');
+                if (primero) primero.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
     }
+
+    refrescar();  // estado inicial
 });
 </script>
 {% endblock body %}

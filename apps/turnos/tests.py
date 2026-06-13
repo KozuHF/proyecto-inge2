@@ -119,7 +119,7 @@ class TurnosPanelTestCase(TestCase):
             self.assertEqual(response.status_code, 302)
             self.assertIn('/login/', response.url)
 
-        # Test client user forbidden (403)
+        # Cliente sin permiso: redirige al inicio (no 403)
         self.client.force_login(self.client_user)
         for url_name, kwargs in [
             ('panel_turnos', None),
@@ -128,9 +128,10 @@ class TurnosPanelTestCase(TestCase):
         ]:
             url = reverse(url_name, kwargs=kwargs)
             response = self.client.get(url)
-            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.url, reverse('home'))
 
-        # Test employee forbidden (403)
+        # Empleado sin permiso (es solo de admin): redirige al inicio
         self.client.force_login(self.employee)
         for url_name, kwargs in [
             ('panel_turnos', None),
@@ -139,7 +140,8 @@ class TurnosPanelTestCase(TestCase):
         ]:
             url = reverse(url_name, kwargs=kwargs)
             response = self.client.get(url)
-            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.url, reverse('home'))
 
         # Test admin allowed (200)
         self.client.force_login(self.admin)

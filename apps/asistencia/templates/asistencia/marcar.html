@@ -15,6 +15,9 @@
         <div class="flex justify-between"><span class="text-gray-400">Actividad</span><span class="font-semibold">{{ asistencia.reserva.turno.actividad.get_nombre_display }}</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Fecha</span><span class="font-semibold">{{ asistencia.reserva.turno.fecha|date:"d/m/Y" }}</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Horario</span><span class="font-semibold">{{ asistencia.reserva.turno.hora|stringformat:"02d" }}:00</span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Pago</span>
+          {% if pago_pendiente %}<span class="font-semibold text-amber-600">Pago pendiente (abono)</span>{% else %}<span class="font-semibold text-green-600">Pagado</span>{% endif %}
+        </div>
         <div class="flex justify-between"><span class="text-gray-400">Estado</span>
           {% if asistencia.presente %}<span class="font-semibold text-green-600">Ya registrada</span>{% else %}<span class="font-semibold text-amber-600">Pendiente</span>{% endif %}
         </div>

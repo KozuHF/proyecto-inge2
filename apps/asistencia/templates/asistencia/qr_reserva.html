@@ -23,6 +23,13 @@
         </div>
       {% endif %}
 
+      {% if pago_pendiente %}
+        <div class="mb-6 p-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-lg text-left">
+          <span class="font-semibold">Tu abono está pendiente de pago.</span>
+          Recordá abonarlo antes del día 10 del mes; pasado el plazo, el QR deja de ser válido.
+        </div>
+      {% endif %}
+
       <div class="flex justify-center mb-6">
         <div class="p-4 bg-white border border-gray-200 rounded-xl w-64 h-64 flex items-center justify-center">
           {{ qr_svg }}
