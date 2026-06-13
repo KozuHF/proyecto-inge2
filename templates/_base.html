@@ -15,6 +15,9 @@
     <!-- Flowbite CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.css">
 
+    <!-- flatpickr: calendarios en formato DD/MM/AAAA -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+
     {% compress css %}
     <link rel="stylesheet" href="{% static 'src/output.css' %}">
     {% endcompress %}
@@ -155,6 +158,23 @@
 
     <!-- Flowbite JS -->
     <script src="https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.js"></script>
+
+    <!-- flatpickr: fuerza el formato DD/MM/AAAA en los calendarios, sin importar
+         el idioma del navegador. El valor que se envía sigue siendo AAAA-MM-DD. -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!window.flatpickr) return;
+        if (flatpickr.l10ns && flatpickr.l10ns.es) flatpickr.localize(flatpickr.l10ns.es);
+        flatpickr('input[type="date"]', {
+            altInput: true,        // input visible en DD/MM/AAAA
+            altFormat: 'd/m/Y',
+            dateFormat: 'Y-m-d',   // lo que se envía al backend (lo que espera Django)
+            allowInput: true,
+        });
+    });
+    </script>
 
     {% block extra_scripts %}{% endblock extra_scripts %}
 </body>

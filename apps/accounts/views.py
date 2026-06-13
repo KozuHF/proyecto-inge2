@@ -183,8 +183,11 @@ def registro_usuario(request):
 
 @login_required
 def detalle_usuario(request, pk):
-    """Detalle de un usuario específico."""
+    """Detalle de un usuario. Solo el administrador o el propio dueño."""
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
+    if request.user.rol != Roles.ADMIN and request.user.pk != usuario.pk:
+        messages.error(request, _("No tenés permiso para ver esta cuenta."))
+        return redirect("home")
     return render(request, "accounts/detalle.html", {"usuario": usuario})
 
 
@@ -195,10 +198,10 @@ def editar_usuario(request, pk):
 
     usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
 
-    # Solo staff o el propio usuario pueden editar
-    if not request.user.is_staff and request.user.pk != usuario.pk:
-        messages.error(request, _("No tenés permiso para editar este usuario."))
-        return redirect("accounts:detalle", pk=pk)
+    # Solo el administrador o el propio usuario pueden editar la cuenta.
+    if request.user.rol != Roles.ADMIN and request.user.pk != usuario.pk:
+        messages.error(request, _("No tenés permiso para acceder a esta cuenta."))
+        return redirect("home")
 
     es_propio_perfil = request.user.pk == usuario.pk
     if es_propio_perfil:

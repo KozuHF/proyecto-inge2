@@ -55,6 +55,7 @@ def qr_reserva(request, pk):
         "asistencia": asistencia,
         "qr_svg": svg,
         "url_marcado": url_marcado,
+        "pago_pendiente": services.pago_pendiente(reserva),
     })
 
 
@@ -97,4 +98,5 @@ def marcar(request, codigo):
     return render(request, "asistencia/marcar.html", {
         "asistencia": asistencia,
         "codigo": codigo,
+        "pago_pendiente": services.pago_pendiente(asistencia.reserva) if asistencia else False,
     })

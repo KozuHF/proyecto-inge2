@@ -143,8 +143,16 @@ python manage.py runserver 0.0.0.0:8000
 
 ## 5. Detalle de las reglas
 
-- **El QR solo aparece** para clases **confirmadas** y **pagadas por completo**
-  (las señadas o pendientes no tienen QR todavía).
+- **Cuándo aparece el QR (según tipo de reserva):**
+  - **Abonado mensual:** el QR se genera **ni bien reserva la clase**, aunque el
+    abono esté pendiente de pago (tiene hasta el **día 10 del mes** para pagar).
+    La página del QR le recuerda el pago pendiente, y el empleado lo ve como
+    "Pago pendiente (abono)" al confirmar la asistencia.
+  - **Turno individual:** el QR aparece solo con la clase **confirmada y pagada
+    por completo** (señas o pagos pendientes no tienen QR).
+- **Bloqueo por plazo vencido:** si un abono sigue impago después del día 10,
+  el QR deja de mostrarse y el marcado se rechaza, aunque la sanción automática
+  (cancelación + suspensión) todavía no haya corrido.
 - **Ventana de marcado:** desde 30 min antes del inicio hasta el fin de la clase.
   Fuera de eso, el sistema responde *"Fuera de horario"*.
 - **Seguridad:** marcar asistencia exige sesión de **empleado o admin**. Un

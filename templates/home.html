@@ -8,6 +8,20 @@
 
 {% block content %}
 
+{% if messages %}
+<div class="max-w-screen-xl mx-auto px-4 pt-6">
+    {% for msg in messages %}
+    <div class="mb-3 p-4 text-sm rounded-lg border
+        {% if msg.tags == 'error' %}text-red-800 bg-red-50 border-red-200
+        {% elif msg.tags == 'warning' %}text-yellow-800 bg-yellow-50 border-yellow-200
+        {% elif msg.tags == 'success' %}text-green-800 bg-green-50 border-green-200
+        {% else %}text-blue-800 bg-blue-50 border-blue-200{% endif %}" role="alert">
+        {{ msg }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <!-- ===================== HERO ===================== -->
 <section class="bg-white dark:bg-gray-900">
     <div class="max-w-screen-xl mx-auto py-16 px-4 text-center lg:py-24">

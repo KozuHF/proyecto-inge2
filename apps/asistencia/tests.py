@@ -46,6 +46,29 @@ class AsistenciaBaseTestCase(TestCase):
         hora = timezone.localtime().hour
         return self._reserva(fecha=timezone.localdate(), hora=hora, **kw)
 
+    def _reserva_abono(self, *, fecha, hora=10, estado_pago=Reserva.EstadoPago.PENDIENTE):
+        """Reserva de abono mensual (grupo del mes de `fecha`) con su pago."""
+        from apps.turnos.models import GrupoReservaMensual
+
+        turno = Turno.objects.create(actividad=self.actividad, fecha=fecha, hora=hora, cupos=5)
+        grupo = GrupoReservaMensual.objects.create(
+            usuario=self.cliente, actividad=self.actividad,
+            dia_semana=fecha.weekday(), hora=hora,
+            anio=fecha.year, mes=fecha.month,
+            regla_cobro="primera_quincena",
+        )
+        return Reserva.objects.create(
+            usuario=self.cliente, turno=turno,
+            estado=Reserva.Estado.CONFIRMADA,
+            estado_pago=estado_pago,
+            tipo_reserva=Reserva.TipoReserva.VARIOS,
+            grupo_mensual=grupo,
+        )
+
+    def _reserva_abono_en_ventana(self, **kw):
+        hora = timezone.localtime().hour
+        return self._reserva_abono(fecha=timezone.localdate(), hora=hora, **kw)
+
 
 class ServiciosAsistenciaTest(AsistenciaBaseTestCase):
     def test_crea_asistencia_solo_para_pagada_confirmada(self):
@@ -103,6 +126,43 @@ class ServiciosAsistenciaTest(AsistenciaBaseTestCase):
         self.assertFalse(services.qr_disponible(pasada))   # ya terminó: no se muestra
         self.assertFalse(services.qr_disponible(no_pagada))  # no pagada: no se muestra
 
+    def test_abonado_pendiente_tiene_qr_y_puede_marcar(self):
+        """El abonado tiene QR desde la reserva, aunque el abono esté impago."""
+        reserva = self._reserva_abono_en_ventana()
+        self.assertTrue(services.qr_disponible(reserva))
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        res = services.marcar_asistencia(asistencia.codigo, self.empleado)
+        self.assertTrue(res.exito)
+        self.assertEqual(res.estado, "registrada")
+
+    def test_abonado_pagado_funciona_igual(self):
+        reserva = self._reserva_abono_en_ventana(estado_pago=Reserva.EstadoPago.PAGADO)
+        self.assertTrue(services.qr_disponible(reserva))
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        res = services.marcar_asistencia(asistencia.codigo, self.empleado)
+        self.assertTrue(res.exito)
+
+    def test_abonado_plazo_vencido_bloquea_qr_y_marcado(self):
+        """Abono impago con plazo vencido (pasó el día 10 de su mes): sin QR ni marcado."""
+        # Turno el 5 del mes (día 1-10) de un mes pasado → plazo vencido seguro.
+        reserva = self._reserva_abono(fecha=date(2020, 3, 5))
+        self.assertFalse(services.qr_disponible(reserva))
+        with self.assertRaises(ValidationError):
+            services.obtener_o_crear_asistencia(reserva)
+        # Si la asistencia ya existía de antes, el marcado también se rechaza.
+        asistencia = Asistencia.objects.create(reserva=reserva)
+        res = services.marcar_asistencia(asistencia.codigo, self.empleado)
+        self.assertFalse(res.exito)
+        self.assertEqual(res.estado, "no_elegible")
+        self.assertIn("abono", res.mensaje.lower())
+
+    def test_individual_senado_sigue_sin_qr(self):
+        """Regresión: el turno individual señado (50%) no tiene QR."""
+        reserva = self._reserva(fecha=date(2035, 1, 2), estado_pago=Reserva.EstadoPago.SENADO)
+        self.assertFalse(services.qr_disponible(reserva))
+        with self.assertRaises(ValidationError):
+            services.obtener_o_crear_asistencia(reserva)
+
     def test_marcar_codigo_inexistente(self):
         import uuid
         res = services.marcar_asistencia(uuid.uuid4(), self.empleado)
@@ -137,7 +197,8 @@ class VistasAsistenciaTest(AsistenciaBaseTestCase):
         asistencia = services.obtener_o_crear_asistencia(reserva)
         self.client.force_login(self.cliente)
         resp = self.client.get(reverse("asistencia:marcar", kwargs={"codigo": asistencia.codigo}))
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("home"))
 
     def test_marcar_empleado_get_y_post(self):
         reserva = self._reserva_en_ventana()
@@ -150,9 +211,19 @@ class VistasAsistenciaTest(AsistenciaBaseTestCase):
         asistencia.refresh_from_db()
         self.assertTrue(asistencia.presente)
 
+    def test_marcar_get_muestra_pago_pendiente_de_abono(self):
+        reserva = self._reserva_abono_en_ventana()
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        self.client.force_login(self.empleado)
+        resp = self.client.get(reverse("asistencia:marcar", kwargs={"codigo": asistencia.codigo}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Pago pendiente (abono)")
+
     def test_escanear_empleado_ok_cliente_prohibido(self):
         url = reverse("asistencia:escanear")
         self.client.force_login(self.empleado)
         self.assertEqual(self.client.get(url).status_code, 200)
         self.client.force_login(self.cliente)
-        self.assertEqual(self.client.get(url).status_code, 403)
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("home"))
