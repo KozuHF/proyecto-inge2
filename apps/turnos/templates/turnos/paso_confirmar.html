@@ -30,11 +30,21 @@
           <span class="text-sm text-gray-500">Horario</span>
           <span class="text-sm font-semibold text-gray-800">{{ hora|stringformat:"02d" }}:00 – {{ hora|add:1|stringformat:"02d" }}:00</span>
         </div>
+        {% if not turno_lleno %}
         <div class="flex justify-between px-4 py-3">
           <span class="text-sm text-gray-500">Total a pagar</span>
           <span class="text-sm font-bold text-green-700">${{ precio }}</span>
         </div>
+        {% endif %}
       </div>
+
+      {% if turno_lleno %}
+        <div class="mb-6 p-4 text-sm text-yellow-800 bg-yellow-50 border border-yellow-200 rounded-lg">
+          Este turno está <strong>completo</strong>. Podés anotarte en la lista de espera
+          <strong>sin cargo</strong>: si se libera un cupo te vamos a invitar por mail y ahí
+          vas a poder pagar la clase.
+        </div>
+      {% endif %}
 
       {% if messages %}
         {% for msg in messages %}
@@ -48,10 +58,17 @@
           class="flex-1 text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
           ← Volver
         </a>
+        {% if turno_lleno %}
+        <button type="submit"
+          class="flex-1 text-white bg-yellow-600 hover:bg-yellow-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
+          Anotarme en lista de espera
+        </button>
+        {% else %}
         <button type="submit"
           class="flex-1 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
           Continuar al pago →
         </button>
+        {% endif %}
       </form>
     </div>
 

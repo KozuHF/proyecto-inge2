@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from .models import GrupoReservaMensual, HorarioDisponible, Reserva, Turno
+from .models import GrupoReservaMensual, HorarioDisponible, InvitacionCupo, Reserva, Turno
 
 
 class ReservaInline(admin.TabularInline):
@@ -40,6 +40,15 @@ class ReservaAdmin(admin.ModelAdmin):
     search_fields  = ("usuario__email", "usuario__apellido", "turno__actividad__nombre")
     readonly_fields = ("fecha_reserva", "fecha_cancelacion")
     ordering       = ("-fecha_reserva",)
+
+
+@admin.register(InvitacionCupo)
+class InvitacionCupoAdmin(admin.ModelAdmin):
+    list_display   = ("reserva", "estado", "fecha_envio", "fecha_vencimiento", "fecha_respuesta")
+    list_filter    = ("estado",)
+    search_fields  = ("reserva__usuario__email", "reserva__turno__actividad__nombre")
+    readonly_fields = ("token", "fecha_envio", "fecha_respuesta")
+    ordering       = ("-fecha_envio",)
 
 
 @admin.register(GrupoReservaMensual)

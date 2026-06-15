@@ -19,6 +19,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from django.urls import reverse
 
 from .models import Reserva
 
@@ -149,4 +150,96 @@ def enviar_comprobante_reserva(usuario, reservas, *, referencia: str = "", tipo_
         return True
     except Exception:
         logger.exception("Error al enviar comprobante de reserva a %s.", usuario.email)
+        return False
+
+
+# ── Invitación de cupo (lista de espera) ──────────────────────────────────────
+
+def _url_absoluta(ruta: str) -> str:
+    """Antepone SITE_BASE_URL (túnel/dominio) a una ruta relativa para los mails."""
+    base = getattr(settings, "SITE_BASE_URL", "") or ""
+    return f"{base}{ruta}" if base else ruta
+
+
+def _emails_admins() -> list[str]:
+    """Emails de los administradores activos."""
+    from apps.accounts.models import Roles, Usuario
+
+    return list(
+        Usuario.objects
+        .filter(rol=Roles.ADMIN, is_active=True)
+        .exclude(email="")
+        .values_list("email", flat=True)
+    )
+
+
+def enviar_invitacion_cupo(invitacion) -> bool:
+    """
+    Avisa al candidato que se liberó un cupo y lo invita a aceptarlo. Incluye la
+    hora límite para aceptar y el link a la página (donde corre el contador).
+    """
+    reserva = invitacion.reserva
+    usuario = reserva.usuario
+    if not getattr(usuario, "email", ""):
+        logger.warning("No se envió invitación: usuario %s sin email.", getattr(usuario, "pk", "?"))
+        return False
+
+    turno = reserva.turno
+    fecha = turno.fecha
+    ruta = reverse("turnos:invitacion_detalle", kwargs={"token": invitacion.token})
+
+    contexto = {
+        "usuario": usuario,
+        "actividad": turno.actividad.get_nombre_display(),
+        "fecha": fecha.strftime("%d/%m/%Y"),
+        "dia_semana": DIAS_SEMANA[fecha.weekday()],
+        "hora": f"{turno.hora:02d}:00",
+        "vence": invitacion.fecha_vencimiento,
+        "url_invitacion": _url_absoluta(ruta),
+        "color_marca": "#16a34a",
+    }
+
+    cuerpo_texto = render_to_string("turnos/emails/invitacion_cupo.txt", contexto)
+    cuerpo_html = render_to_string("turnos/emails/invitacion_cupo.html", contexto)
+
+    try:
+        mail = EmailMultiAlternatives(
+            "Se liberó un cupo - Club360",
+            cuerpo_texto,
+            settings.DEFAULT_FROM_EMAIL,
+            [usuario.email],
+        )
+        mail.attach_alternative(cuerpo_html, "text/html")
+        mail.send()
+        logger.info("Invitación de cupo enviada a %s (turno %s).", usuario.email, turno)
+        return True
+    except Exception:
+        logger.exception("Error al enviar invitación de cupo a %s.", usuario.email)
+        return False
+
+
+def enviar_aviso_admin_lista_espera(total: int) -> bool:
+    """Avisa a los admins que se alcanzó el umbral de clientes en lista de espera."""
+    destinatarios = _emails_admins()
+    if not destinatarios:
+        logger.warning("No hay admins con email para avisar de la lista de espera.")
+        return False
+
+    contexto = {"total": total, "color_marca": "#16a34a"}
+    cuerpo_texto = render_to_string("turnos/emails/aviso_admin_lista_espera.txt", contexto)
+    cuerpo_html = render_to_string("turnos/emails/aviso_admin_lista_espera.html", contexto)
+
+    try:
+        mail = EmailMultiAlternatives(
+            "Aviso: lista de espera - Club360",
+            cuerpo_texto,
+            settings.DEFAULT_FROM_EMAIL,
+            destinatarios,
+        )
+        mail.attach_alternative(cuerpo_html, "text/html")
+        mail.send()
+        logger.info("Aviso de lista de espera (%d) enviado a %d admin(s).", total, len(destinatarios))
+        return True
+    except Exception:
+        logger.exception("Error al enviar aviso de lista de espera a admins.")
         return False

@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 from django.conf import settings
 from django.db import models
@@ -206,27 +207,27 @@ class Turno(models.Model):
                 % {"actividad": self.actividad, "fecha": self.fecha, "hora": self.hora}
             )
         if self.pk:
-            ocupados = self.reservas_confirmadas.count()
+            ocupados = self.cupos_ocupados
             if self.cupos < ocupados:
                 raise ValidationError(
                     _("No podés reducir los cupos por debajo de las reservas ya confirmadas (%(ocupados)d).")
                     % {"ocupados": ocupados}
                 )
 
-    def promover_espera_segun_cupos(self):
-        """Promueve tantos usuarios en lista de espera a CONFIRMADA como cupos libres haya."""
-        libres = self.cupos_libres
-        if libres > 0:
-            espera = list(self.lista_espera[:libres])
-            for r in espera:
-                r.estado = Reserva.Estado.CONFIRMADA
-                r.save(update_fields=["estado"])
+    def ofrecer_cupos_libres(self):
+        """
+        Ofrece los cupos libres a la lista de espera (con prioridad por rol),
+        creando una invitación por cada cupo. No promueve directo: ver
+        `apps.turnos.lista_espera.ofrecer_cupo_siguiente`.
+        """
+        from .lista_espera import ofrecer_cupo_siguiente
+        ofrecer_cupo_siguiente(self)
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None
         super().save(*args, **kwargs)
         if not is_new:
-            self.promover_espera_segun_cupos()
+            self.ofrecer_cupos_libres()
 
     # ── Propiedades calculadas ────────────────────────────────────────────────
 
@@ -240,7 +241,11 @@ class Turno(models.Model):
 
     @property
     def cupos_ocupados(self) -> int:
-        return self.reservas_confirmadas.count()
+        # Un INVITADO tiene el cupo congelado mientras decide, así que cuenta
+        # como ocupado igual que una reserva confirmada.
+        return self.reservas.filter(
+            estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.INVITADO]
+        ).count()
 
     @property
     def cupos_libres(self) -> int:
@@ -282,6 +287,7 @@ class Reserva(models.Model):
     class Estado(models.TextChoices):
         CONFIRMADA = "confirmada", _("Confirmada")
         EN_ESPERA  = "en_espera",  _("En lista de espera")
+        INVITADO   = "invitado",   _("Invitado (esperá confirmación)")
         CANCELADA  = "cancelada",  _("Cancelada")
 
     class TipoReserva(models.TextChoices):
@@ -362,7 +368,7 @@ class Reserva(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["usuario", "turno"],
-                condition=models.Q(estado__in=["confirmada", "en_espera"]),
+                condition=models.Q(estado__in=["confirmada", "en_espera", "invitado"]),
                 name="unique_reserva_activa_por_usuario_turno",
             )
         ]
@@ -425,31 +431,31 @@ class Reserva(models.Model):
 
     def cancelar(self):
         """
-        Cancela esta reserva y, si estaba confirmada, promueve al primero
-        de la lista de espera del mismo turno.
+        Cancela esta reserva y, si liberó un cupo confirmado, le ofrece el lugar
+        al siguiente de la lista de espera mediante una invitación por mail
+        (ver `apps.turnos.lista_espera.ofrecer_cupo_siguiente`).
         """
         if self.estado == self.Estado.CANCELADA:
             raise ValidationError(_("Esta reserva ya fue cancelada."))
 
-        era_confirmada = (self.estado == self.Estado.CONFIRMADA)
+        libero_cupo = self.estado in (self.Estado.CONFIRMADA, self.Estado.INVITADO)
         self.estado = self.Estado.CANCELADA
         self.fecha_cancelacion = timezone.now()
         self.save(update_fields=["estado", "fecha_cancelacion"])
 
-        if era_confirmada:
-            self._promover_lista_espera()
+        if libero_cupo:
+            # Si la reserva tenía una invitación pendiente (se cancela por otra
+            # vía, ej. suspensión), la cerramos para no dejarla huérfana.
+            invitacion = InvitacionCupo.objects.filter(
+                reserva=self, estado=InvitacionCupo.Estado.PENDIENTE
+            ).first()
+            if invitacion:
+                invitacion.estado = InvitacionCupo.Estado.VENCIDA
+                invitacion.fecha_respuesta = timezone.now()
+                invitacion.save(update_fields=["estado", "fecha_respuesta"])
 
-    def _promover_lista_espera(self):
-        """Promueve al primer usuario en lista de espera a CONFIRMADA."""
-        siguiente = (
-            self.turno.reservas
-            .filter(estado=Reserva.Estado.EN_ESPERA)
-            .order_by("fecha_reserva")
-            .first()
-        )
-        if siguiente:
-            siguiente.estado = Reserva.Estado.CONFIRMADA
-            siguiente.save(update_fields=["estado"])
+            from .lista_espera import ofrecer_cupo_siguiente
+            ofrecer_cupo_siguiente(self.turno)
 
 
 # ── GrupoReservaMensual ───────────────────────────────────────────────────────
@@ -636,3 +642,65 @@ class CancelacionAbonoMensual(models.Model):
 
     def __str__(self):
         return f"{self.usuario} – {self.mes_cancelacion:02d}/{self.anio_cancelacion}"
+
+
+# ── InvitacionCupo ────────────────────────────────────────────────────────────
+
+class InvitacionCupo(models.Model):
+    """
+    Oferta de un cupo liberado al siguiente de la lista de espera de un turno.
+
+    Cuando se libera un cupo, la reserva del candidato pasa a INVITADO y se crea
+    esta invitación con un plazo (`fecha_vencimiento`). El candidato tiene hasta
+    ese momento para aceptar (y pagar) o rechazar. Si vence o rechaza, el cupo se
+    le ofrece al siguiente.
+    """
+
+    class Estado(models.TextChoices):
+        PENDIENTE = "pendiente", _("Pendiente")
+        ACEPTADA  = "aceptada",  _("Aceptada")
+        RECHAZADA = "rechazada", _("Rechazada")
+        VENCIDA   = "vencida",   _("Vencida")
+
+    reserva = models.OneToOneField(
+        Reserva,
+        on_delete=models.CASCADE,
+        related_name="invitacion",
+        verbose_name=_("Reserva"),
+    )
+    token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        verbose_name=_("Token"),
+    )
+    estado = models.CharField(
+        max_length=10,
+        choices=Estado.choices,
+        default=Estado.PENDIENTE,
+        verbose_name=_("Estado"),
+    )
+    fecha_envio = models.DateTimeField(auto_now_add=True, verbose_name=_("Fecha de envío"))
+    fecha_vencimiento = models.DateTimeField(verbose_name=_("Fecha de vencimiento"))
+    fecha_respuesta = models.DateTimeField(null=True, blank=True, verbose_name=_("Fecha de respuesta"))
+
+    class Meta:
+        verbose_name = _("Invitación de cupo")
+        verbose_name_plural = _("Invitaciones de cupo")
+        ordering = ["-fecha_envio"]
+
+    def __str__(self):
+        return f"Invitación {self.reserva.usuario} – {self.reserva.turno} [{self.get_estado_display()}]"
+
+    @property
+    def esta_vigente(self) -> bool:
+        return self.estado == self.Estado.PENDIENTE and timezone.now() < self.fecha_vencimiento
+
+    @property
+    def esta_vencida(self) -> bool:
+        return self.estado == self.Estado.PENDIENTE and timezone.now() >= self.fecha_vencimiento
+
+    @property
+    def segundos_restantes(self) -> int:
+        restante = (self.fecha_vencimiento - timezone.now()).total_seconds()
+        return max(0, int(restante))

@@ -1,0 +1,125 @@
+{% extends "_base.html" %}
+{% load i18n %}
+
+{% block title %}Cupo disponible{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10 px-4">
+  <div class="max-w-lg mx-auto">
+
+    <h1 class="text-3xl font-extrabold text-gray-900 mb-6">Cupo disponible</h1>
+
+    {% if messages %}
+      {% for msg in messages %}
+        <div class="mb-4 p-4 text-sm rounded-lg border
+          {% if msg.tags == 'error' %}text-red-800 bg-red-50 border-red-200
+          {% elif msg.tags == 'warning' %}text-yellow-800 bg-yellow-50 border-yellow-200
+          {% else %}text-green-800 bg-green-50 border-green-200{% endif %}">
+          {{ msg }}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8">
+
+      <div class="rounded-xl border border-gray-200 divide-y divide-gray-100 mb-6">
+        <div class="flex justify-between px-4 py-3">
+          <span class="text-sm text-gray-500">Actividad</span>
+          <span class="text-sm font-semibold text-gray-800">{{ reserva.turno.actividad }}</span>
+        </div>
+        <div class="flex justify-between px-4 py-3">
+          <span class="text-sm text-gray-500">Fecha</span>
+          <span class="text-sm font-semibold text-gray-800">{{ reserva.turno.fecha|date:"d/m/Y" }}</span>
+        </div>
+        <div class="flex justify-between px-4 py-3">
+          <span class="text-sm text-gray-500">Horario</span>
+          <span class="text-sm font-semibold text-gray-800">{{ reserva.turno.hora|stringformat:"02d" }}:00 – {{ reserva.turno.hora|add:1|stringformat:"02d" }}:00</span>
+        </div>
+      </div>
+
+      {% if invitacion.esta_vigente %}
+        <div class="text-center mb-6">
+          <p class="text-sm text-gray-500 mb-1">Tiempo restante para aceptar</p>
+          <p id="contador" class="text-4xl font-extrabold text-green-700 tabular-nums"
+             data-segundos="{{ invitacion.segundos_restantes }}">--:--</p>
+          <p class="text-xs text-gray-400 mt-2">Vence el {{ invitacion.fecha_vencimiento|date:"d/m/Y" }} a las {{ invitacion.fecha_vencimiento|date:"H:i" }} hs</p>
+        </div>
+
+        <div id="acciones" class="flex flex-col gap-3">
+          <form method="post" action="{% url 'turnos:invitacion_aceptar' invitacion.token %}">
+            {% csrf_token %}
+            <button type="submit" id="btn-aceptar"
+                    class="w-full text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
+              Aceptar y pagar la clase →
+            </button>
+          </form>
+          <form method="post" action="{% url 'turnos:invitacion_rechazar' invitacion.token %}"
+                onsubmit="return confirm('¿Seguro que querés rechazar el cupo? Pasará al siguiente de la lista.')">
+            {% csrf_token %}
+            <button type="submit"
+                    class="w-full border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
+              Rechazar
+            </button>
+          </form>
+        </div>
+
+        <div id="vencido-msg" class="hidden mt-4 p-4 text-sm text-yellow-800 bg-yellow-50 border border-yellow-200 rounded-lg">
+          El tiempo para aceptar este cupo se terminó. Actualizá la página: el cupo ya se le ofreció al siguiente de la lista.
+        </div>
+      {% elif invitacion.estado == 'aceptada' %}
+        <div class="p-4 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg">
+          Ya aceptaste este cupo. Revisá el estado de tu reserva en
+          <a href="{% url 'turnos:mis_reservas' %}" class="font-semibold underline">Mis reservas</a>.
+        </div>
+      {% elif invitacion.estado == 'rechazada' %}
+        <div class="p-4 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg">
+          Rechazaste este cupo. Se le ofreció al siguiente de la lista de espera.
+        </div>
+      {% else %}
+        <div class="p-4 text-sm text-yellow-800 bg-yellow-50 border border-yellow-200 rounded-lg">
+          Esta invitación venció. El cupo se le ofreció al siguiente de la lista de espera.
+        </div>
+      {% endif %}
+
+      <div class="mt-6 text-center">
+        <a href="{% url 'turnos:mis_reservas' %}" class="text-sm text-gray-500 hover:text-gray-700">← Volver a mis reservas</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% if invitacion.esta_vigente %}
+<script>
+  (function () {
+    var el = document.getElementById("contador");
+    if (!el) return;
+    var restante = parseInt(el.dataset.segundos, 10) || 0;
+
+    function dos(n) { return (n < 10 ? "0" : "") + n; }
+
+    function pintar() {
+      if (restante <= 0) {
+        el.textContent = "00:00";
+        el.classList.remove("text-green-700");
+        el.classList.add("text-red-600");
+        var acciones = document.getElementById("acciones");
+        if (acciones) acciones.classList.add("hidden");
+        var msg = document.getElementById("vencido-msg");
+        if (msg) msg.classList.remove("hidden");
+        clearInterval(timer);
+        return;
+      }
+      var h = Math.floor(restante / 3600);
+      var m = Math.floor((restante % 3600) / 60);
+      var s = restante % 60;
+      el.textContent = (h > 0 ? dos(h) + ":" : "") + dos(m) + ":" + dos(s);
+      restante -= 1;
+    }
+
+    pintar();
+    var timer = setInterval(pintar, 1000);
+  })();
+</script>
+{% endif %}
+{% endblock content %}
