@@ -9,8 +9,10 @@ from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_http_methods
 
 from apps.accounts.decorators import rol_requerido
+from apps.accounts.repository import UsuarioRepository
 from apps.turnos.models import Reserva
 from . import services
+from .forms import BuscarPorDniForm
 from .models import Asistencia
 from .qr import svg_qr
 
@@ -64,6 +66,41 @@ def qr_reserva(request, pk):
 def escanear(request):
     """Página con escáner de cámara (html5-qrcode) para el empleado."""
     return render(request, "asistencia/escanear.html")
+
+
+@login_required
+@rol_requerido(["admin", "employee"])
+def marcar_por_dni(request):
+    """
+    Marcado manual de asistencia para clientes que olvidaron el QR.
+
+    El empleado ingresa el DNI; si el cliente tiene reservas dentro del rango
+    horario de la clase, se listan para marcar la asistencia a mano. El marcado
+    en sí lo hace la vista `marcar` (reusa toda la validación y el registro).
+    """
+    form = BuscarPorDniForm(request.POST or None)
+    cliente = None
+    reservas_info = None
+    buscado = False
+
+    if request.method == "POST" and form.is_valid():
+        buscado = True
+        cliente = UsuarioRepository.obtener_por_documento(form.cleaned_data["nro_documento"])
+        if cliente is not None:
+            reservas_info = []
+            for reserva in services.reservas_marcables_ahora(cliente):
+                try:
+                    asistencia = services.obtener_o_crear_asistencia(reserva)
+                except ValidationError:
+                    continue
+                reservas_info.append({"reserva": reserva, "asistencia": asistencia})
+
+    return render(request, "asistencia/marcar_por_dni.html", {
+        "form": form,
+        "cliente": cliente,
+        "reservas_info": reservas_info,
+        "buscado": buscado,
+    })
 
 
 @login_required
