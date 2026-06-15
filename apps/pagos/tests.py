@@ -119,6 +119,57 @@ class TarjetaPagoFormCreditosTestCase(TestCase):
         self.assertIn("cvv", form.errors)
 
 
+class ObtenerReservaPagableTestCase(TestCase):
+    """Una reserva en lista de espera (EN_ESPERA) no debe poder pagarse."""
+
+    def setUp(self):
+        from apps.turnos.models import Turno
+
+        self.usuario = Usuario.objects.create_user(
+            email="pago.espera@test.com", nombre="Pago", apellido="Espera",
+            nro_documento="66600001", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL,
+            defaults={"cupos": 5, "precio_turno": Decimal("5000.00")},
+        )
+        self.turno = Turno.objects.create(
+            actividad=self.actividad, fecha=date(2035, 1, 2), hora=10, cupos=5
+        )
+
+    def _reserva(self, estado):
+        from apps.turnos.models import Reserva
+        return Reserva.objects.create(
+            usuario=self.usuario, turno=self.turno, estado=estado,
+            estado_pago="pendiente", tipo_reserva="individual",
+        )
+
+    def test_en_espera_no_es_pagable(self):
+        from django.core.exceptions import ValidationError
+        from apps.pagos.services import obtener_reserva_pagable
+        from apps.turnos.models import Reserva
+
+        reserva = self._reserva(Reserva.Estado.EN_ESPERA)
+        with self.assertRaises(ValidationError):
+            obtener_reserva_pagable(self.usuario, reserva.pk)
+
+    def test_confirmada_pendiente_es_pagable(self):
+        from apps.pagos.services import obtener_reserva_pagable
+        from apps.turnos.models import Reserva
+
+        reserva = self._reserva(Reserva.Estado.CONFIRMADA)
+        self.assertEqual(obtener_reserva_pagable(self.usuario, reserva.pk).pk, reserva.pk)
+
+    def test_invitado_es_pagable(self):
+        """El invitado sí paga: es el flujo de aceptar el cupo liberado."""
+        from apps.pagos.services import obtener_reserva_pagable
+        from apps.turnos.models import Reserva
+
+        reserva = self._reserva(Reserva.Estado.INVITADO)
+        self.assertEqual(obtener_reserva_pagable(self.usuario, reserva.pk).pk, reserva.pk)
+
+
 class CardValidationAndPaymentTestCase(TestCase):
     def test_any_16_digit_card_is_valid(self):
         from apps.pagos import tarjetas

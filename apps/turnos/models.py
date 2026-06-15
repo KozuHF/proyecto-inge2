@@ -402,6 +402,11 @@ class Reserva(models.Model):
     def puede_pagar(self) -> bool:
         if self.es_abonado_mensual:
             return False
+        # Solo se paga una reserva confirmada (completar saldo) o invitada (aceptar
+        # el cupo). Estando EN_ESPERA no se paga: anotarse es gratis hasta que se
+        # libere un cupo y se acepte la invitación.
+        if self.estado not in (self.Estado.CONFIRMADA, self.Estado.INVITADO):
+            return False
         return self.estado_pago in (self.EstadoPago.PENDIENTE, self.EstadoPago.SENADO)
 
     @property
