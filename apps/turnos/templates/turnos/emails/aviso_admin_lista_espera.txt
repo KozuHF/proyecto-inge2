@@ -1,0 +1,7 @@
+Aviso de lista de espera - Club360
+
+Hay {{ total }} clientes en lista de espera en el sistema.
+
+Tené en cuenta este volumen para evaluar si conviene abrir nuevos turnos o ampliar cupos.
+
+Este es un correo automático de Club360.

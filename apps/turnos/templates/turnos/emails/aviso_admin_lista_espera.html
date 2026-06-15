@@ -1,0 +1,44 @@
+{% autoescape off %}<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aviso: lista de espera</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f3f4f6; font-family:Arial, Helvetica, sans-serif; color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:600px; background-color:#ffffff; border-radius:16px; overflow:hidden; border:1px solid #e5e7eb;">
+
+          <tr>
+            <td style="background-color:{{ color_marca }}; padding:24px 32px;">
+              <span style="font-size:22px; font-weight:bold; color:#ffffff; letter-spacing:0.5px;">Club360</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px;">
+              <h1 style="margin:0 0 10px 0; font-size:20px; color:#111827;">Aviso de lista de espera</h1>
+              <p style="margin:0 0 8px 0; font-size:15px; color:#374151;">
+                Hay <strong>{{ total }} clientes</strong> en lista de espera en el sistema.
+              </p>
+              <p style="margin:0; font-size:14px; color:#6b7280;">
+                Tené en cuenta este volumen para evaluar si conviene abrir nuevos turnos o ampliar cupos.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 32px 28px 32px; border-top:1px solid #f3f4f6;">
+              <p style="margin:16px 0 0 0; font-size:13px; color:#9ca3af;">Este es un correo automático de Club360.</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+{% endautoescape %}

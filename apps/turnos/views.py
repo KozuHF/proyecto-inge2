@@ -191,20 +191,39 @@ def paso_confirmar(request):
     fecha = date_type.fromisoformat(wizard["fecha"])
     hora = wizard["hora"]
 
+    turno_lleno = services.turno_existente_lleno(actividad, fecha, hora)
+
     if request.method == "POST":
-        try:
-            services.calcular_monto_reserva_nueva(
-                actividad, MODO_TURNO_UNICO, fecha, hora
-            )
-            return redirect("pagos:pagar_wizard")
-        except ValidationError as exc:
-            messages.error(request, exc.message)
+        if turno_lleno:
+            # El turno está completo: se anota en lista de espera sin cobro.
+            try:
+                services.anotar_en_lista_espera(request.user, actividad, fecha, hora)
+                _wizard_clear(request)
+                messages.success(
+                    request,
+                    _(
+                        "Te anotamos en la lista de espera, sin cargo. Si se libera un "
+                        "cupo te vamos a invitar por mail y ahí podrás pagar la clase."
+                    ),
+                )
+                return redirect("turnos:mis_reservas")
+            except ValidationError as exc:
+                messages.error(request, exc.message)
+        else:
+            try:
+                services.calcular_monto_reserva_nueva(
+                    actividad, MODO_TURNO_UNICO, fecha, hora
+                )
+                return redirect("pagos:pagar_wizard")
+            except ValidationError as exc:
+                messages.error(request, exc.message)
 
     return render(request, "turnos/paso_confirmar.html", {
         "actividad": actividad,
         "fecha": fecha,
         "hora": hora,
         "precio": actividad.precio_turno,
+        "turno_lleno": turno_lleno,
         "paso": 5,
         "modo": wizard["modo"],
     })
@@ -298,6 +317,14 @@ def mis_reservas(request):
         )
 
     from apps.asistencia import services as asistencia_services
+    from . import lista_espera
+    from .models import InvitacionCupo
+
+    # Lazy-check: vencer invitaciones del usuario cuyo plazo ya pasó antes de listar.
+    for inv in InvitacionCupo.objects.filter(
+        reserva__usuario=request.user, estado=InvitacionCupo.Estado.PENDIENTE
+    ).select_related("reserva", "reserva__turno"):
+        lista_espera.procesar_si_vencida(inv)
 
     # Solo las próximas (lo accionable). Las clases que ya pasaron van a una
     # página de historial aparte. "Pasó" = la ventana de asistencia cerró.
@@ -320,7 +347,11 @@ def mis_reservas(request):
         GrupoReservaMensual.objects
         .filter(
             usuario=request.user,
-            reservas__estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+            reservas__estado__in=[
+                Reserva.Estado.CONFIRMADA,
+                Reserva.Estado.EN_ESPERA,
+                Reserva.Estado.INVITADO,
+            ],
         )
         .distinct()
         .prefetch_related("reservas__turno__actividad")
@@ -336,11 +367,18 @@ def mis_reservas(request):
 
 
 def _reservas_activas_usuario(usuario):
-    """Reservas activas (confirmadas o en espera) del usuario, ordenadas por fecha."""
+    """Reservas activas (confirmadas, en espera o invitadas) del usuario, por fecha."""
     return list(
         Reserva.objects
-        .filter(usuario=usuario, estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA])
-        .select_related("turno", "turno__actividad", "grupo_mensual")
+        .filter(
+            usuario=usuario,
+            estado__in=[
+                Reserva.Estado.CONFIRMADA,
+                Reserva.Estado.EN_ESPERA,
+                Reserva.Estado.INVITADO,
+            ],
+        )
+        .select_related("turno", "turno__actividad", "grupo_mensual", "invitacion")
         .order_by("turno__fecha", "turno__hora")
     )
 
@@ -407,6 +445,65 @@ def cancelar_grupo_mensual(request, pk):
                 "deporte": grupo.actividad.get_nombre_display(),
             }
         messages.success(request, msg)
+    except ValidationError as exc:
+        messages.error(request, exc.message)
+    return redirect("turnos:mis_reservas")
+
+
+# ── Invitación de cupo (lista de espera) ──────────────────────────────────────
+
+def _obtener_invitacion(request, token):
+    from .models import InvitacionCupo
+    return get_object_or_404(
+        InvitacionCupo.objects.select_related(
+            "reserva", "reserva__turno", "reserva__turno__actividad", "reserva__usuario"
+        ),
+        token=token,
+        reserva__usuario=request.user,
+    )
+
+
+@login_required
+def invitacion_detalle(request, token):
+    from . import lista_espera
+
+    invitacion = _obtener_invitacion(request, token)
+    # Lazy-check: si venció, se procesa antes de mostrar.
+    lista_espera.procesar_si_vencida(invitacion)
+    invitacion.refresh_from_db()
+    return render(request, "turnos/invitacion_detalle.html", {
+        "invitacion": invitacion,
+        "reserva": invitacion.reserva,
+    })
+
+
+@login_required
+@require_POST
+def invitacion_aceptar(request, token):
+    from . import lista_espera
+
+    invitacion = _obtener_invitacion(request, token)
+    try:
+        reserva = lista_espera.aceptar(invitacion)
+    except ValidationError as exc:
+        messages.error(request, exc.message)
+        return redirect("turnos:mis_reservas")
+    # La reserva queda en INVITADO; se confirma al aprobarse el pago.
+    return redirect("pagos:pagar_reserva", reserva.pk)
+
+
+@login_required
+@require_POST
+def invitacion_rechazar(request, token):
+    from . import lista_espera
+
+    invitacion = _obtener_invitacion(request, token)
+    try:
+        lista_espera.rechazar(invitacion)
+        messages.info(
+            request,
+            _("Rechazaste la invitación. El cupo se le ofreció al siguiente de la lista."),
+        )
     except ValidationError as exc:
         messages.error(request, exc.message)
     return redirect("turnos:mis_reservas")

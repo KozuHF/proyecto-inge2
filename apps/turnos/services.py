@@ -114,7 +114,11 @@ def _crear_reserva_para_turno(usuario, turno: Turno, tipo: str, grupo=None) -> R
     ya_existe = Reserva.objects.filter(
         usuario=usuario,
         turno=turno,
-        estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+        estado__in=[
+            Reserva.Estado.CONFIRMADA,
+            Reserva.Estado.EN_ESPERA,
+            Reserva.Estado.INVITADO,
+        ],
     ).exists()
     if ya_existe:
         raise ValidationError(
@@ -123,13 +127,19 @@ def _crear_reserva_para_turno(usuario, turno: Turno, tipo: str, grupo=None) -> R
 
     estado = Reserva.Estado.EN_ESPERA if turno.esta_lleno else Reserva.Estado.CONFIRMADA
 
-    return Reserva.objects.create(
+    reserva = Reserva.objects.create(
         usuario=usuario,
         turno=turno,
         estado=estado,
         tipo_reserva=tipo,
         grupo_mensual=grupo,
     )
+
+    if estado == Reserva.Estado.EN_ESPERA:
+        from .lista_espera import chequear_umbral_admin
+        chequear_umbral_admin()
+
+    return reserva
 
 
 # ── Fechas candidatas para «varios turnos» ────────────────────────────────────
@@ -245,6 +255,33 @@ def reservar_turno_individual(usuario, actividad: Actividad, fecha: date, hora: 
     return _crear_reserva_para_turno(usuario, turno, Reserva.TipoReserva.INDIVIDUAL)
 
 
+def turno_existente_lleno(actividad: Actividad, fecha: date, hora: int) -> bool:
+    """
+    True si ya existe el turno y está lleno (lista de espera). Si el turno todavía
+    no existe en BD, hay cupo (se crea al reservar), así que devuelve False.
+    """
+    turno = Turno.objects.filter(actividad=actividad, fecha=fecha, hora=hora).first()
+    return bool(turno and turno.esta_lleno)
+
+
+@transaction.atomic
+def anotar_en_lista_espera(usuario, actividad: Actividad, fecha: date, hora: int) -> Reserva:
+    """
+    Anota al usuario en la lista de espera de un turno lleno, sin cobro. Solo se
+    paga si más adelante se libera un cupo, se lo invita y acepta.
+    """
+    _validar_no_pasado(fecha)
+    _validar_dia_habil(fecha)
+    _validar_hora(hora)
+
+    turno = _obtener_o_crear_turno(actividad, fecha, hora)
+    if not turno.esta_lleno:
+        raise ValidationError(
+            _("El turno tiene cupos disponibles; reservalo de la forma habitual.")
+        )
+    return _crear_reserva_para_turno(usuario, turno, Reserva.TipoReserva.INDIVIDUAL)
+
+
 @transaction.atomic
 def reservar_varios_turnos(
     usuario,
@@ -339,7 +376,11 @@ def cancelar_grupo_mensual(usuario, grupo_id: int) -> tuple[GrupoReservaMensual,
 
     reservas_activas = list(
         grupo.reservas.filter(
-            estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA]
+            estado__in=[
+                Reserva.Estado.CONFIRMADA,
+                Reserva.Estado.EN_ESPERA,
+                Reserva.Estado.INVITADO,
+            ]
         ).select_related("turno", "turno__actividad")
     )
     from .penalidad_cancelaciones import registrar_cancelacion_abono_mensual
@@ -370,7 +411,11 @@ def reservas_futuras_de_usuario(usuario):
         Reserva.objects
         .filter(
             usuario=usuario,
-            estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+            estado__in=[
+                Reserva.Estado.CONFIRMADA,
+                Reserva.Estado.EN_ESPERA,
+                Reserva.Estado.INVITADO,
+            ],
             turno__fecha__gte=hoy,
         )
         .select_related("turno")

@@ -16,6 +16,11 @@ urlpatterns = [
     path("mis-reservas/<int:pk>/cancelar/", views.cancelar_reserva, name="cancelar_reserva"),
     path("grupos/<int:pk>/cancelar/", views.cancelar_grupo_mensual, name="cancelar_grupo_mensual"),
 
+    # ── Invitaciones de cupo (lista de espera) ────────────────────────────────
+    path("invitacion/<uuid:token>/", views.invitacion_detalle, name="invitacion_detalle"),
+    path("invitacion/<uuid:token>/aceptar/", views.invitacion_aceptar, name="invitacion_aceptar"),
+    path("invitacion/<uuid:token>/rechazar/", views.invitacion_rechazar, name="invitacion_rechazar"),
+
     # ── Gestión de horarios disponibles (solo admin) ──────────────────────────
     path("horarios/crear/", views.crear_horario_disponible, name="crear_horario_disponible"),
     path("horarios/<int:pk>/editar/", views.editar_horario_disponible, name="editar_horario_disponible"),

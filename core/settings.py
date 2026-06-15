@@ -240,6 +240,18 @@ else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
     DEFAULT_FROM_EMAIL = 'Club360 <noreply@club360.local>'
 
+# ─────────────────────────────────────────────
+#  Lista de espera de turnos
+#
+#  Cuando se libera un cupo de un turno lleno, se le ofrece al siguiente de la
+#  lista de espera por mail. Tiene INVITACION_LISTA_ESPERA_MINUTOS para aceptar
+#  antes de que la invitación venza y pase al siguiente.
+#  Cuando el total de clientes en lista de espera del sistema llega a
+#  UMBRAL_AVISO_LISTA_ESPERA, se le avisa al admin por mail.
+# ─────────────────────────────────────────────
+INVITACION_LISTA_ESPERA_MINUTOS = int(os.environ.get('INVITACION_LISTA_ESPERA_MINUTOS', '60'))
+UMBRAL_AVISO_LISTA_ESPERA = int(os.environ.get('UMBRAL_AVISO_LISTA_ESPERA', '10'))
+
 #redirección del login
 
 LOGIN_URL = 'accounts:login'

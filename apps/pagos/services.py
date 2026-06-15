@@ -243,7 +243,11 @@ def obtener_reserva_pagable(usuario, reserva_id: int) -> Reserva:
             .get(
                 pk=reserva_id,
                 usuario=usuario,
-                estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.EN_ESPERA],
+                estado__in=[
+                    Reserva.Estado.CONFIRMADA,
+                    Reserva.Estado.EN_ESPERA,
+                    Reserva.Estado.INVITADO,
+                ],
             )
         )
     except Reserva.DoesNotExist:
@@ -559,6 +563,24 @@ def procesar_pago_reserva(
 ) -> ResultadoPago:
     """Pago de una reserva ya existente (ej. completar saldo desde Mis reservas)."""
     reserva = obtener_reserva_pagable(usuario, reserva_id)
+
+    # Si es una invitación de cupo (lista de espera), el pago confirma la reserva.
+    # Validar que la invitación siga vigente antes de cobrar.
+    es_invitado = reserva.estado == Reserva.Estado.INVITADO
+    if es_invitado:
+        from apps.turnos import lista_espera
+
+        invitacion = getattr(reserva, "invitacion", None)
+        if invitacion is None or not invitacion.esta_vigente:
+            if invitacion is not None:
+                lista_espera.procesar_si_vencida(invitacion)
+            return ResultadoPago(
+                exito=False,
+                mensaje=_(
+                    "La invitación venció. El cupo se le ofreció al siguiente de la lista."
+                ),
+            )
+
     monto_cobro = calcular_monto_cobro_reserva(reserva, tipo_pago)
     ctx = creditos_services.contexto_desde_reserva(usuario, reserva)
     monto_tarjeta, descuento, creditos_efectivos = _preparar_cobro_con_creditos(
@@ -592,6 +614,13 @@ def procesar_pago_reserva(
         _aplicar_pago_aprobado(reserva, tipo_pago, monto_cobro, referencia)
     else:
         _aplicar_pago_aprobado(reserva, tipo_pago, reserva.monto_total, referencia)
+
+    # Confirmar la reserva invitada (pasa de INVITADO a CONFIRMADA y marca la
+    # invitación como aceptada) recién ahora que el pago fue aprobado.
+    if es_invitado:
+        from apps.turnos import lista_espera
+
+        lista_espera.confirmar_por_pago(reserva)
 
     notificaciones.enviar_comprobante_reserva(
         usuario, reserva, referencia=referencia, tipo_pago=tipo_pago, monto_pagado=monto_tarjeta

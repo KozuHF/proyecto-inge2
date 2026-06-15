@@ -80,15 +80,14 @@ class TurnosPanelTestCase(TestCase):
             self.turno.full_clean()
         self.assertIn("No podés reducir los cupos", str(ctx.exception))
 
-    def test_waitlist_promotion_on_cupo_increase(self):
-        """Waitlisted reservations are automatically promoted to CONFIRMADA when cupos are increased."""
-        # Create 1st reservation (confirmed since cupos=1)
+    def test_waitlist_invitation_on_cupo_increase(self):
+        """Al aumentar cupos, el de la lista de espera recibe una invitación (queda INVITADO)."""
         r1 = Reserva.objects.create(
             usuario=self.client_user,
             turno=self.turno,
             estado=Reserva.Estado.CONFIRMADA
         )
-        # Create 2nd reservation (waitlisted)
+        # 2da reserva en lista de espera
         r2 = Reserva.objects.create(
             usuario=self.other_user,
             turno=self.turno,
@@ -98,13 +97,14 @@ class TurnosPanelTestCase(TestCase):
         self.assertEqual(r1.estado, Reserva.Estado.CONFIRMADA)
         self.assertEqual(r2.estado, Reserva.Estado.EN_ESPERA)
 
-        # Increase cupos to 2 and save the shift
+        # Aumentar cupos a 2 y guardar el turno → se ofrece el cupo, no se promueve directo
         self.turno.cupos = 2
         self.turno.save()
 
-        # Refresh r2 from database
         r2.refresh_from_db()
-        self.assertEqual(r2.estado, Reserva.Estado.CONFIRMADA)
+        self.assertEqual(r2.estado, Reserva.Estado.INVITADO)
+        self.assertTrue(hasattr(r2, "invitacion"))
+        self.assertEqual(r2.invitacion.estado, r2.invitacion.Estado.PENDIENTE)
 
     def test_panel_views_access_permissions(self):
         """Only administrators can access panel_turnos, editar_turno, and eliminar_turno."""
@@ -732,6 +732,201 @@ class ComprobanteReservaMailTestCase(TestCase):
 
         self.assertFalse(enviado)
         self.assertEqual(len(mail.outbox), 0)
+
+
+class ListaEsperaInvitacionTestCase(TestCase):
+    """Lista de espera con invitación por rol, cobro al aceptar y aviso al admin."""
+
+    def setUp(self):
+        self.admin = Usuario.objects.create_user(
+            email="admin-le@test.com", nombre="Admin", apellido="LE",
+            nro_documento="10000001", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.ADMIN, is_staff=True,
+        )
+        self.titular = Usuario.objects.create_user(
+            email="titular@test.com", nombre="Titu", apellido="Lar",
+            nro_documento="10000002", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.no_abonado = Usuario.objects.create_user(
+            email="noab@test.com", nombre="No", apellido="Abonado",
+            nro_documento="10000003", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.abonado = Usuario.objects.create_user(
+            email="ab@test.com", nombre="Si", apellido="Abonado",
+            nro_documento="10000004", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL,
+            defaults={"cupos": 5, "precio_turno": 5000},
+        )
+        # 2026-06-01 es lunes
+        self.turno = Turno.objects.create(
+            actividad=self.actividad, fecha=date(2026, 6, 1), hora=10, cupos=1
+        )
+
+    def _hacer_abonado(self, usuario, actividad):
+        """Crea un abono mensual activo del usuario en la actividad."""
+        from apps.turnos.models import GrupoReservaMensual
+        otro_turno = Turno.objects.create(
+            actividad=actividad, fecha=date(2026, 6, 8), hora=10, cupos=5
+        )
+        grupo = GrupoReservaMensual.objects.create(
+            usuario=usuario, actividad=actividad, dia_semana=0, hora=10,
+            anio=2026, mes=6,
+        )
+        Reserva.objects.create(
+            usuario=usuario, turno=otro_turno, estado=Reserva.Estado.CONFIRMADA,
+            tipo_reserva=Reserva.TipoReserva.VARIOS, grupo_mensual=grupo,
+        )
+        return grupo
+
+    def test_prioridad_abonado_sobre_no_abonado(self):
+        from apps.turnos.models import InvitacionCupo
+
+        confirmada = Reserva.objects.create(
+            usuario=self.titular, turno=self.turno, estado=Reserva.Estado.CONFIRMADA
+        )
+        # El no abonado entra ANTES a la lista de espera
+        r_no_ab = Reserva.objects.create(
+            usuario=self.no_abonado, turno=self.turno, estado=Reserva.Estado.EN_ESPERA
+        )
+        # El abonado entra después, pero tiene prioridad por ser abonado de la actividad
+        self._hacer_abonado(self.abonado, self.actividad)
+        r_ab = Reserva.objects.create(
+            usuario=self.abonado, turno=self.turno, estado=Reserva.Estado.EN_ESPERA
+        )
+
+        confirmada.cancelar()
+
+        r_ab.refresh_from_db()
+        r_no_ab.refresh_from_db()
+        self.assertEqual(r_ab.estado, Reserva.Estado.INVITADO)
+        self.assertEqual(r_no_ab.estado, Reserva.Estado.EN_ESPERA)
+        self.assertTrue(
+            InvitacionCupo.objects.filter(reserva=r_ab, estado=InvitacionCupo.Estado.PENDIENTE).exists()
+        )
+
+    def test_confirmar_por_pago(self):
+        from apps.turnos import lista_espera
+        from apps.turnos.models import InvitacionCupo
+
+        confirmada = Reserva.objects.create(
+            usuario=self.titular, turno=self.turno, estado=Reserva.Estado.CONFIRMADA
+        )
+        invitado = Reserva.objects.create(
+            usuario=self.no_abonado, turno=self.turno, estado=Reserva.Estado.EN_ESPERA
+        )
+        confirmada.cancelar()
+        invitado.refresh_from_db()
+        self.assertEqual(invitado.estado, Reserva.Estado.INVITADO)
+
+        lista_espera.confirmar_por_pago(invitado)
+
+        invitado.refresh_from_db()
+        self.assertEqual(invitado.estado, Reserva.Estado.CONFIRMADA)
+        self.assertEqual(invitado.invitacion.estado, InvitacionCupo.Estado.ACEPTADA)
+
+    def test_rechazar_ofrece_al_siguiente(self):
+        from apps.turnos import lista_espera
+
+        confirmada = Reserva.objects.create(
+            usuario=self.titular, turno=self.turno, estado=Reserva.Estado.CONFIRMADA
+        )
+        r1 = Reserva.objects.create(
+            usuario=self.no_abonado, turno=self.turno, estado=Reserva.Estado.EN_ESPERA
+        )
+        r2 = Reserva.objects.create(
+            usuario=self.abonado, turno=self.turno, estado=Reserva.Estado.EN_ESPERA
+        )
+        confirmada.cancelar()
+        r1.refresh_from_db()
+        self.assertEqual(r1.estado, Reserva.Estado.INVITADO)
+
+        lista_espera.rechazar(r1.invitacion)
+
+        r1.refresh_from_db()
+        r2.refresh_from_db()
+        self.assertEqual(r1.estado, Reserva.Estado.CANCELADA)
+        self.assertEqual(r2.estado, Reserva.Estado.INVITADO)
+
+    def test_expiracion_ofrece_al_siguiente(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.turnos import lista_espera
+        from apps.turnos.models import InvitacionCupo
+
+        confirmada = Reserva.objects.create(
+            usuario=self.titular, turno=self.turno, estado=Reserva.Estado.CONFIRMADA
+        )
+        r1 = Reserva.objects.create(
+            usuario=self.no_abonado, turno=self.turno, estado=Reserva.Estado.EN_ESPERA
+        )
+        r2 = Reserva.objects.create(
+            usuario=self.abonado, turno=self.turno, estado=Reserva.Estado.EN_ESPERA
+        )
+        confirmada.cancelar()
+        r1.refresh_from_db()
+        inv = r1.invitacion
+        # Forzar el vencimiento al pasado
+        inv.fecha_vencimiento = timezone.now() - timedelta(minutes=1)
+        inv.save(update_fields=["fecha_vencimiento"])
+
+        n = lista_espera.expirar_invitaciones_vencidas()
+
+        self.assertEqual(n, 1)
+        inv.refresh_from_db()
+        r1.refresh_from_db()
+        r2.refresh_from_db()
+        self.assertEqual(inv.estado, InvitacionCupo.Estado.VENCIDA)
+        self.assertEqual(r1.estado, Reserva.Estado.CANCELADA)
+        self.assertEqual(r2.estado, Reserva.Estado.INVITADO)
+
+    def test_aviso_admin_al_llegar_al_umbral(self):
+        from django.core import mail
+        from django.test import override_settings
+        from apps.turnos import lista_espera
+
+        with override_settings(UMBRAL_AVISO_LISTA_ESPERA=3):
+            # 2 en espera: todavía no avisa
+            for i in range(2):
+                t = Turno.objects.create(
+                    actividad=self.actividad, fecha=date(2026, 6, 1), hora=11 + i, cupos=1
+                )
+                Reserva.objects.create(
+                    usuario=self.titular, turno=t, estado=Reserva.Estado.EN_ESPERA
+                )
+            lista_espera.chequear_umbral_admin()
+            self.assertEqual(len(mail.outbox), 0)
+
+            # La 3ra cruza el umbral: avisa una vez
+            t = Turno.objects.create(
+                actividad=self.actividad, fecha=date(2026, 6, 1), hora=20, cupos=1
+            )
+            Reserva.objects.create(
+                usuario=self.titular, turno=t, estado=Reserva.Estado.EN_ESPERA
+            )
+            lista_espera.chequear_umbral_admin()
+            self.assertEqual(len(mail.outbox), 1)
+            self.assertIn("lista de espera", mail.outbox[0].subject.lower())
+            self.assertIn(self.admin.email, mail.outbox[0].to)
+
+    def test_invitacion_dispara_mail(self):
+        from django.core import mail
+
+        confirmada = Reserva.objects.create(
+            usuario=self.titular, turno=self.turno, estado=Reserva.Estado.CONFIRMADA
+        )
+        Reserva.objects.create(
+            usuario=self.no_abonado, turno=self.turno, estado=Reserva.Estado.EN_ESPERA
+        )
+        confirmada.cancelar()
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.no_abonado.email])
+        self.assertIn("cupo", mail.outbox[0].subject.lower())
 
 
 class UserReservationConflictTestCase(TestCase):

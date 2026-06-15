@@ -43,13 +43,15 @@
           </thead>
           <tbody class="divide-y divide-gray-100">
             {% for reserva in reservas_activas %}
-              <tr class="{% if reserva.estado == 'en_espera' %}bg-yellow-50{% endif %}">
+              <tr class="{% if reserva.estado == 'invitado' %}bg-green-50{% elif reserva.estado == 'en_espera' %}bg-yellow-50{% endif %}">
                 <td class="px-4 py-3 font-medium text-gray-800">{{ reserva.turno.actividad }}</td>
                 <td class="px-4 py-3 text-gray-600">{{ reserva.turno.fecha|date:"d/m/Y" }}</td>
                 <td class="px-4 py-3 text-gray-600">{{ reserva.turno.hora|stringformat:"02d" }}:00 – {{ reserva.turno.hora|add:1|stringformat:"02d" }}:00</td>
                 <td class="px-4 py-3">
                   {% if reserva.estado == 'confirmada' %}
                     <span class="px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">Confirmada</span>
+                  {% elif reserva.estado == 'invitado' %}
+                    <span class="px-2 py-1 text-xs font-semibold text-green-800 bg-green-200 rounded-full">¡Cupo disponible!</span>
                   {% else %}
                     <span class="px-2 py-1 text-xs font-semibold text-yellow-700 bg-yellow-100 rounded-full">En espera</span>
                   {% endif %}
@@ -81,23 +83,30 @@
                 <td class="px-4 py-3 text-gray-500">{{ reserva.tipo_abono_display }}</td>
                 <td class="px-4 py-3">
                   <div class="flex flex-col gap-1 items-start">
-                    {% if reserva.puede_pagar %}
-                      <a href="{% url 'pagos:pagar_reserva' reserva.pk %}"
+                    {% if reserva.estado == 'invitado' %}
+                      <a href="{% url 'turnos:invitacion_detalle' reserva.invitacion.token %}"
                          class="text-xs text-white bg-green-600 hover:bg-green-700 font-semibold px-3 py-1.5 rounded-lg transition">
-                        Pagar
+                        Responder invitación
                       </a>
+                    {% else %}
+                      {% if reserva.puede_pagar %}
+                        <a href="{% url 'pagos:pagar_reserva' reserva.pk %}"
+                           class="text-xs text-white bg-green-600 hover:bg-green-700 font-semibold px-3 py-1.5 rounded-lg transition">
+                          Pagar
+                        </a>
+                      {% endif %}
+                      {% if reserva.qr_disponible %}
+                        <a href="{% url 'asistencia:qr_reserva' reserva.pk %}"
+                           class="text-xs text-white bg-gray-800 hover:bg-gray-900 font-semibold px-3 py-1.5 rounded-lg transition">
+                          Ver QR
+                        </a>
+                      {% endif %}
+                      <form method="post" action="{% url 'turnos:cancelar_reserva' reserva.pk %}"
+                            onsubmit="return confirm('¿Confirmás la cancelación?')">
+                        {% csrf_token %}
+                        <button type="submit" class="text-xs text-red-600 hover:text-red-800 font-semibold">Cancelar</button>
+                      </form>
                     {% endif %}
-                    {% if reserva.qr_disponible %}
-                      <a href="{% url 'asistencia:qr_reserva' reserva.pk %}"
-                         class="text-xs text-white bg-gray-800 hover:bg-gray-900 font-semibold px-3 py-1.5 rounded-lg transition">
-                        Ver QR
-                      </a>
-                    {% endif %}
-                    <form method="post" action="{% url 'turnos:cancelar_reserva' reserva.pk %}"
-                          onsubmit="return confirm('¿Confirmás la cancelación?')">
-                      {% csrf_token %}
-                      <button type="submit" class="text-xs text-red-600 hover:text-red-800 font-semibold">Cancelar</button>
-                    </form>
                   </div>
                 </td>
               </tr>

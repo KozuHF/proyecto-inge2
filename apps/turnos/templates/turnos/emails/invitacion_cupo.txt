@@ -1,0 +1,18 @@
+¡Se liberó un cupo! - Club360
+
+Hola{% if usuario.get_short_name %} {{ usuario.get_short_name }}{% endif %}.
+
+Estabas en la lista de espera y quedó un lugar disponible para esta clase:
+
+  Actividad: {{ actividad }}
+  Día:       {{ dia_semana }} {{ fecha }}
+  Horario:   {{ hora }} hs
+
+Tenés tiempo para aceptar HASTA EL {{ vence|date:"d/m/Y" }} A LAS {{ vence|date:"H:i" }} hs.
+Pasado ese momento, el cupo se le ofrece al siguiente de la lista.
+
+Para aceptar (y pagar) o rechazar, entrá acá:
+{{ url_invitacion }}
+
+Gracias por elegir Club360.
+Este es un correo automático, no respondas a esta dirección.
