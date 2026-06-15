@@ -101,6 +101,32 @@ def pago_pendiente(reserva: Reserva) -> bool:
     )
 
 
+def reservas_marcables_ahora(usuario) -> list[Reserva]:
+    """
+    Reservas del usuario cuyo turno está dentro de la ventana de asistencia en
+    este momento y son elegibles para marcar (confirmadas, pagas o abono vigente).
+
+    Pensado para el marcado manual por DNI cuando el cliente olvidó el QR: solo
+    devuelve lo que el empleado puede registrar ahora mismo.
+    """
+    hoy = timezone.localdate()
+    ahora = timezone.now()
+    reservas = (
+        Reserva.objects
+        .filter(usuario=usuario, estado=Reserva.Estado.CONFIRMADA, turno__fecha=hoy)
+        .select_related("turno", "turno__actividad")
+        .order_by("turno__hora")
+    )
+    marcables = []
+    for reserva in reservas:
+        if not _reserva_elegible(reserva) or _abono_con_plazo_vencido(reserva):
+            continue
+        apertura, cierre = ventana_asistencia(reserva.turno)
+        if apertura <= ahora <= cierre:
+            marcables.append(reserva)
+    return marcables
+
+
 def obtener_o_crear_asistencia(reserva: Reserva) -> Asistencia:
     """
     Devuelve (creando si hace falta) la Asistencia de una reserva elegible.

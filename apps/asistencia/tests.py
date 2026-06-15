@@ -227,3 +227,171 @@ class VistasAsistenciaTest(AsistenciaBaseTestCase):
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.url, reverse("home"))
+
+
+class SeguridadQRTest(AsistenciaBaseTestCase):
+    """
+    Verifica que no se pueda abusar del QR: ni reutilizarlo en otra clase, ni
+    marcar la reserva de otra persona, ni acceder al marcado sin ser empleado.
+    """
+
+    def test_marcar_anonimo_redirige_a_login(self):
+        """Un usuario sin sesión no puede marcar (ni por GET ni por POST)."""
+        reserva = self._reserva_en_ventana()
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        url = reverse("asistencia:marcar", kwargs={"codigo": asistencia.codigo})
+
+        resp_get = self.client.get(url)
+        self.assertEqual(resp_get.status_code, 302)
+        self.assertIn("/cuenta/login", resp_get.url)
+
+        resp_post = self.client.post(url)
+        self.assertEqual(resp_post.status_code, 302)
+        asistencia.refresh_from_db()
+        self.assertFalse(asistencia.presente)  # no se marcó nada
+
+    def test_codigo_de_otra_clase_no_sirve_fuera_de_su_ventana(self):
+        """
+        El QR de una clase no sirve para 'colarse' en otro horario: el código
+        está atado a la ventana de SU propio turno. Un QR de una clase que ya
+        pasó no puede marcarse aunque haya otra clase en curso.
+        """
+        pasada = self._reserva(fecha=date(2020, 1, 2), hora=10)          # fuera de ventana
+        en_curso = self._reserva_en_ventana(usuario=self.otro)           # otra clase, en ventana
+        asistencia_pasada = services.obtener_o_crear_asistencia(pasada)
+        asistencia_en_curso = services.obtener_o_crear_asistencia(en_curso)
+
+        res = services.marcar_asistencia(asistencia_pasada.codigo, self.empleado)
+
+        self.assertFalse(res.exito)
+        self.assertEqual(res.estado, "fuera_de_ventana")
+        asistencia_pasada.refresh_from_db()
+        asistencia_en_curso.refresh_from_db()
+        self.assertFalse(asistencia_pasada.presente)
+        self.assertFalse(asistencia_en_curso.presente)  # la clase en curso no se tocó
+
+    def test_codigo_marca_solo_su_propia_reserva(self):
+        """
+        El código de la reserva de A marca SOLO la asistencia de A, nunca la de
+        B (no hay forma de marcar a otro con un QR ajeno).
+        """
+        turno = Turno.objects.create(
+            actividad=self.actividad, fecha=timezone.localdate(),
+            hora=timezone.localtime().hour, cupos=5,
+        )
+        reserva_a = Reserva.objects.create(
+            usuario=self.cliente, turno=turno,
+            estado=Reserva.Estado.CONFIRMADA, estado_pago=Reserva.EstadoPago.PAGADO,
+            precio_abonado=5000,
+        )
+        reserva_b = Reserva.objects.create(
+            usuario=self.otro, turno=turno,
+            estado=Reserva.Estado.CONFIRMADA, estado_pago=Reserva.EstadoPago.PAGADO,
+            precio_abonado=5000,
+        )
+        asis_a = services.obtener_o_crear_asistencia(reserva_a)
+        asis_b = services.obtener_o_crear_asistencia(reserva_b)
+
+        services.marcar_asistencia(asis_a.codigo, self.empleado)
+
+        asis_a.refresh_from_db()
+        asis_b.refresh_from_db()
+        self.assertTrue(asis_a.presente)
+        self.assertFalse(asis_b.presente)
+
+    def test_captura_reusada_no_duplica_ni_cambia_registro(self):
+        """
+        Una captura del QR re-presentada (por la misma o por otra persona) no
+        genera un segundo registro: la 2da vez devuelve 'ya_registrada' y no
+        cambia quién ni cuándo se registró.
+        """
+        reserva = self._reserva_en_ventana()
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        services.marcar_asistencia(asistencia.codigo, self.empleado)
+        asistencia.refresh_from_db()
+        registrado_por_1 = asistencia.registrado_por_id
+        fecha_1 = asistencia.fecha_registro
+
+        res2 = services.marcar_asistencia(asistencia.codigo, self.empleado)
+        asistencia.refresh_from_db()
+
+        self.assertEqual(res2.estado, "ya_registrada")
+        self.assertEqual(asistencia.registrado_por_id, registrado_por_1)
+        self.assertEqual(asistencia.fecha_registro, fecha_1)
+
+    def test_confirmacion_muestra_datos_del_cliente(self):
+        """
+        La pantalla de confirmación muestra el nombre del cliente para que el
+        empleado pueda cotejar identidad antes de marcar (mitiga el préstamo de QR).
+        """
+        reserva = self._reserva_en_ventana()
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        self.client.force_login(self.empleado)
+        resp = self.client.get(reverse("asistencia:marcar", kwargs={"codigo": asistencia.codigo}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, self.cliente.get_full_name())
+
+
+class MarcarPorDniTest(AsistenciaBaseTestCase):
+    """Marcado manual de asistencia por DNI (cliente que olvidó el QR)."""
+
+    def _url(self):
+        return reverse("asistencia:marcar_por_dni")
+
+    def test_requiere_empleado(self):
+        url = self._url()
+        # Anónimo → login
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/cuenta/login", resp.url)
+        # Cliente → home
+        self.client.force_login(self.cliente)
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("home"))
+        # Empleado → 200
+        self.client.force_login(self.empleado)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_lista_reserva_en_ventana(self):
+        reserva = self._reserva_en_ventana()
+        self.client.force_login(self.empleado)
+        resp = self.client.post(self._url(), {"nro_documento": self.cliente.nro_documento})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context["reservas_info"]), 1)
+        self.assertEqual(resp.context["reservas_info"][0]["reserva"].pk, reserva.pk)
+        self.assertContains(resp, self.cliente.get_full_name())
+
+    def test_no_lista_reserva_fuera_de_ventana(self):
+        self._reserva(fecha=date(2035, 1, 2))  # clase futura, fuera de ventana
+        self.client.force_login(self.empleado)
+        resp = self.client.post(self._url(), {"nro_documento": self.cliente.nro_documento})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["reservas_info"], [])
+        self.assertContains(resp, "no tiene ninguna clase en el horario actual")
+
+    def test_dni_inexistente(self):
+        self.client.force_login(self.empleado)
+        resp = self.client.post(self._url(), {"nro_documento": "99999999"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.context["cliente"])
+        self.assertContains(resp, "No se encontró")
+
+    def test_dni_invalido(self):
+        self.client.force_login(self.empleado)
+        resp = self.client.post(self._url(), {"nro_documento": "abc"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.context["buscado"])
+        self.assertTrue(resp.context["form"].errors)
+
+    def test_flujo_completo_marca_asistencia(self):
+        """Empleado busca por DNI y marca la asistencia de la reserva en curso."""
+        reserva = self._reserva_en_ventana()
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        self.client.force_login(self.empleado)
+        # El botón de la pantalla POSTea a la vista marcar con el código.
+        resp = self.client.post(reverse("asistencia:marcar", kwargs={"codigo": asistencia.codigo}))
+        self.assertEqual(resp.status_code, 200)
+        asistencia.refresh_from_db()
+        self.assertTrue(asistencia.presente)
+        self.assertEqual(asistencia.registrado_por, self.empleado)
