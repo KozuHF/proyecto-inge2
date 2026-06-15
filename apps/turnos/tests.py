@@ -458,6 +458,41 @@ class TurnosPanelTestCase(TestCase):
         self.assertContains(response, "reclamos@club360.com")
 
 
+class PuedePagarListaEsperaTestCase(TestCase):
+    """El botón Pagar no debe aparecer para una reserva en lista de espera."""
+
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user(
+            email="pp@test.com", nombre="Pe", apellido="Pe",
+            nro_documento="66700001", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL, defaults={"cupos": 5, "precio_turno": 5000}
+        )
+
+    def _reserva(self, estado, *, hora):
+        turno = Turno.objects.create(
+            actividad=self.actividad, fecha=date(2035, 1, 2), hora=hora, cupos=5
+        )
+        return Reserva.objects.create(
+            usuario=self.usuario, turno=turno, estado=estado,
+            estado_pago=Reserva.EstadoPago.PENDIENTE, tipo_reserva=Reserva.TipoReserva.INDIVIDUAL,
+        )
+
+    def test_en_espera_no_puede_pagar(self):
+        reserva = self._reserva(Reserva.Estado.EN_ESPERA, hora=10)
+        self.assertFalse(reserva.puede_pagar)
+
+    def test_confirmada_pendiente_puede_pagar(self):
+        reserva = self._reserva(Reserva.Estado.CONFIRMADA, hora=11)
+        self.assertTrue(reserva.puede_pagar)
+
+    def test_invitado_puede_pagar(self):
+        reserva = self._reserva(Reserva.Estado.INVITADO, hora=12)
+        self.assertTrue(reserva.puede_pagar)
+
+
 class PenalidadCancelacionesTestCase(TestCase):
     """Penalización: 3+ cancelaciones de abono mensual en un mes → sin 20 % el mes siguiente."""
 

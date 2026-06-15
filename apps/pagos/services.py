@@ -243,9 +243,10 @@ def obtener_reserva_pagable(usuario, reserva_id: int) -> Reserva:
             .get(
                 pk=reserva_id,
                 usuario=usuario,
+                # EN_ESPERA no es pagable: anotarse en la lista de espera es gratis.
+                # Solo se paga una reserva confirmada o una invitación aceptada.
                 estado__in=[
                     Reserva.Estado.CONFIRMADA,
-                    Reserva.Estado.EN_ESPERA,
                     Reserva.Estado.INVITADO,
                 ],
             )
