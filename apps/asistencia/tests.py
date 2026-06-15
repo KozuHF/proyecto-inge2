@@ -169,6 +169,29 @@ class ServiciosAsistenciaTest(AsistenciaBaseTestCase):
         self.assertFalse(res.exito)
         self.assertEqual(res.estado, "no_elegible")
 
+    def test_marcar_individual_senado_rechazado(self):
+        """
+        Turno individual con seña (pago parcial 50%): no se puede marcar la
+        asistencia. Se exige el 100% pagado (los abonos mensuales son la excepción).
+        """
+        reserva = self._reserva_en_ventana(estado_pago=Reserva.EstadoPago.SENADO)
+        # La asistencia ni siquiera se genera por la vía normal; la creamos a mano
+        # para probar que el marcado igual la rechaza.
+        asistencia = Asistencia.objects.create(reserva=reserva)
+        res = services.marcar_asistencia(asistencia.codigo, self.empleado)
+        self.assertFalse(res.exito)
+        self.assertEqual(res.estado, "no_elegible")
+        asistencia.refresh_from_db()
+        self.assertFalse(asistencia.presente)
+
+    def test_marcar_individual_pendiente_rechazado(self):
+        """Turno individual sin pagar (pendiente): tampoco se puede marcar."""
+        reserva = self._reserva_en_ventana(estado_pago=Reserva.EstadoPago.PENDIENTE)
+        asistencia = Asistencia.objects.create(reserva=reserva)
+        res = services.marcar_asistencia(asistencia.codigo, self.empleado)
+        self.assertFalse(res.exito)
+        self.assertEqual(res.estado, "no_elegible")
+
 
 class VistasAsistenciaTest(AsistenciaBaseTestCase):
     def test_qr_reserva_dueño(self):
@@ -364,6 +387,18 @@ class MarcarPorDniTest(AsistenciaBaseTestCase):
 
     def test_no_lista_reserva_fuera_de_ventana(self):
         self._reserva(fecha=date(2035, 1, 2))  # clase futura, fuera de ventana
+        self.client.force_login(self.empleado)
+        resp = self.client.post(self._url(), {"nro_documento": self.cliente.nro_documento})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["reservas_info"], [])
+        self.assertContains(resp, "no tiene ninguna clase en el horario actual")
+
+    def test_no_lista_reserva_con_pago_parcial(self):
+        """
+        Un turno individual señado (pagó solo la seña) no figura como marcable
+        por DNI: el empleado no puede registrarle la asistencia hasta el 100%.
+        """
+        self._reserva_en_ventana(estado_pago=Reserva.EstadoPago.SENADO)
         self.client.force_login(self.empleado)
         resp = self.client.post(self._url(), {"nro_documento": self.cliente.nro_documento})
         self.assertEqual(resp.status_code, 200)
