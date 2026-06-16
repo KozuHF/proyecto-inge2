@@ -458,6 +458,38 @@ class TurnosPanelTestCase(TestCase):
         self.assertContains(response, "reclamos@club360.com")
 
 
+class HistorialClasesTestCase(TestCase):
+    """Sin clases históricas, entrar al historial redirige a Mis reservas."""
+
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user(
+            email="hist@test.com", nombre="His", apellido="Torial",
+            nro_documento="66800001", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL, defaults={"cupos": 5, "precio_turno": 5000}
+        )
+
+    def test_sin_historial_redirige_a_mis_reservas(self):
+        self.client.force_login(self.usuario)
+        resp = self.client.get(reverse("turnos:historial_clases"))
+        self.assertRedirects(resp, reverse("turnos:mis_reservas"))
+
+    def test_con_historial_muestra_la_pagina(self):
+        turno = Turno.objects.create(
+            actividad=self.actividad, fecha=date(2020, 1, 2), hora=10, cupos=5
+        )
+        Reserva.objects.create(
+            usuario=self.usuario, turno=turno,
+            estado=Reserva.Estado.CONFIRMADA, estado_pago=Reserva.EstadoPago.PAGADO,
+            precio_abonado=5000,
+        )
+        self.client.force_login(self.usuario)
+        resp = self.client.get(reverse("turnos:historial_clases"))
+        self.assertEqual(resp.status_code, 200)
+
+
 class PuedePagarListaEsperaTestCase(TestCase):
     """El botón Pagar no debe aparecer para una reserva en lista de espera."""
 
