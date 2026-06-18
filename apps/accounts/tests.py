@@ -75,6 +75,31 @@ class PanelPermissionsTest(TestCase):
             self.assertEqual(response.status_code, 200)
 
 
+class LoginRedirectSeguroTest(TestCase):
+    """El parámetro `next` del login no debe permitir open redirect."""
+
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user(
+            email="login@test.com", nombre="Log", apellido="In",
+            nro_documento="92000001", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.cred = {"username": "login@test.com", "password": "Password123!"}
+
+    def test_next_interno_se_respeta(self):
+        destino = reverse("turnos:mis_reservas")
+        resp = self.client.post(reverse("accounts:login") + f"?next={destino}", self.cred)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, destino)
+
+    def test_next_externo_se_ignora(self):
+        resp = self.client.post(
+            reverse("accounts:login") + "?next=https://evil.example.com/phish", self.cred
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("home"))  # va a home, no al sitio externo
+
+
 class AccesoCuentaAjenaTest(TestCase):
     """Un usuario no puede acceder a la cuenta de otro por URL."""
 
