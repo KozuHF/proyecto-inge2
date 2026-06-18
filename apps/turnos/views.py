@@ -394,6 +394,11 @@ def historial_clases(request):
         if asistencia_services.ventana_cerrada(r.turno)
     ]
 
+    # Sin historial no se muestra la página vacía: se vuelve a Mis reservas.
+    if not historicas:
+        messages.info(request, _("Todavía no tenés historial de clases."))
+        return redirect("turnos:mis_reservas")
+
     presentes = dict(
         Asistencia.objects
         .filter(reserva__in=historicas)
