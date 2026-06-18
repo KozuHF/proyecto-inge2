@@ -14,5 +14,5 @@ def svg_qr(data: str, *, scale: int = 6, border: int = 2) -> str:
     """
     qr = segno.make(data, error="m")
     buff = io.BytesIO()
-    qr.save(buff, kind="svg", scale=scale, border=border, xmldecl=False, svgns=True)
+    qr.save(buff, kind="svg", scale=scale, border=4, xmldecl=False, svgns=True)
     return buff.getvalue().decode("utf-8")

@@ -31,15 +31,22 @@
     {% if asistencia %}
       <div class="text-left bg-gray-50 dark:bg-gray-900 rounded-xl p-4 text-sm text-gray-700 dark:text-gray-300 space-y-1 mb-6">
         <div class="flex justify-between"><span class="text-gray-400">Cliente</span><span class="font-semibold">{{ asistencia.reserva.usuario.get_full_name }}</span></div>
+        <div class="flex justify-between"><span class="text-gray-400">DNI</span><span class="font-semibold">{{ asistencia.reserva.usuario.nro_documento }}</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Actividad</span><span class="font-semibold">{{ asistencia.reserva.turno.actividad.get_nombre_display }}</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Fecha</span><span class="font-semibold">{{ asistencia.reserva.turno.fecha|date:"d/m/Y" }}</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Horario</span><span class="font-semibold">{{ asistencia.reserva.turno.hora|stringformat:"02d" }}:00</span></div>
       </div>
     {% endif %}
 
-    <a href="{% url 'asistencia:escanear' %}" class="inline-block px-5 py-3 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
-      Escanear otro QR
-    </a>
+    {% if origen == "dni" %}
+      <a href="{% url 'asistencia:marcar_por_dni' %}" class="inline-block px-5 py-3 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
+        Registrar otro cliente
+      </a>
+    {% else %}
+      <a href="{% url 'asistencia:escanear' %}" class="inline-block px-5 py-3 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
+        Escanear otro QR
+      </a>
+    {% endif %}
   </div>
 </div>
 {% endblock panel_content %}

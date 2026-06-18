@@ -3,7 +3,7 @@ import logging
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_http_methods
@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 @login_required
 def qr_reserva(request, pk):
     """Muestra el QR de asistencia de una reserva propia, pagada por completo."""
-    reserva = get_object_or_404(
-        Reserva.objects.select_related("turno", "turno__actividad", "usuario"),
-        pk=pk,
-        usuario=request.user,
-    )
+    reserva = Reserva.objects.select_related(
+        "turno", "turno__actividad", "usuario"
+    ).filter(pk=pk).first()
+    if reserva is None or reserva.usuario != request.user:
+        return redirect("turnos:mis_reservas")
 
     try:
         asistencia = services.obtener_o_crear_asistencia(reserva)
@@ -130,10 +130,12 @@ def marcar(request, codigo):
         return render(request, "asistencia/marcar_resultado.html", {
             "resultado": resultado,
             "asistencia": resultado.asistencia or asistencia,
+            "origen": request.GET.get("origen", "qr"),
         })
 
     return render(request, "asistencia/marcar.html", {
         "asistencia": asistencia,
         "codigo": codigo,
         "pago_pendiente": services.pago_pendiente(asistencia.reserva) if asistencia else False,
+        "origen": request.GET.get("origen", "qr"),
     })
