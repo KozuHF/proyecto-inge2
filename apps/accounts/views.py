@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
@@ -44,8 +45,14 @@ def vista_login(request):
         usuario = form.get_user()
         login(request, usuario)
         logger.info("Login exitoso: %s (ID=%s)", usuario.email, usuario.pk)
+        # Solo se redirige a `next` si apunta al mismo sitio: evita un open
+        # redirect (?next=https://sitio-malicioso) que se podría usar para phishing.
         next_url = request.GET.get("next")
-        if next_url:
+        if next_url and url_has_allowed_host_and_scheme(
+            next_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
             return redirect(next_url)
         return redirect("home")
 

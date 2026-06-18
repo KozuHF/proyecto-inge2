@@ -44,9 +44,12 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   const html5QrCode = new Html5Qrcode("reader");
+  const ancho = document.getElementById("reader").offsetWidth;
+  const lado  = Math.min(Math.floor(ancho * 0.8), 300);
+
   html5QrCode.start(
     { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 250, height: 250 } },
+    { fps: 15, qrbox: { width: lado, height: lado } },
     onScanSuccess,
     function () { /* ignorar fallos de frame */ }
   ).then(function () {
