@@ -10,6 +10,7 @@ urlpatterns = [
     path("reservar/hora/", views.paso_hora, name="paso_hora"),
     path("reservar/confirmar/", views.paso_confirmar, name="paso_confirmar"),
     path("reservar/fechas/", views.paso_seleccion_fechas, name="paso_seleccion_fechas"),
+    path("reservar/fechas/lista-espera/", views.anotar_lista_espera_abono, name="anotar_lista_espera_abono"),
 
     path("mis-reservas/", views.mis_reservas, name="mis_reservas"),
     path("mis-reservas/historial/", views.historial_clases, name="historial_clases"),

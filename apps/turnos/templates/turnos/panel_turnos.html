@@ -152,21 +152,27 @@
                             Ocupación: {{ turno.cupos_ocupados }}/{{ turno.cupos_totales }} cupos
                         </span>
                         <div class="flex items-center gap-2">
+                            {% if turno.horario_pk %}
+                                <a href="{% url 'turnos:editar_horario_disponible' turno.horario_pk %}"
+                                   class="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/10 rounded-lg transition">
+                                    Editar clase
+                                </a>
+                            {% endif %}
                             {% if turno.pk %}
-                                <a href="{% url 'editar_turno' turno.pk %}" 
+                                <a href="{% url 'editar_turno' turno.pk %}"
                                     style="display: none !important;" class="text-xs font-bold text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 px-3 py-1.5 bg-green-50 dark:bg-green-900/10 rounded-lg transition">
                                     Modificar
                                 </a>
-                                <a href="{% url 'eliminar_turno' turno.pk %}" 
+                                <a href="{% url 'eliminar_turno' turno.pk %}"
                                     style="display: none !important;" class="text-xs font-bold text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 px-3 py-1.5 bg-red-50 dark:bg-red-900/10 rounded-lg transition">
                                     Eliminar
                                 </a>
                             {% else %}
-                                <a href="{% url 'editar_turno_slot' turno.actividad.id turno.fecha|date:'Y-m-d' turno.hora %}" 
+                                <a href="{% url 'editar_turno_slot' turno.actividad.id turno.fecha|date:'Y-m-d' turno.hora %}"
                                     style="display: none !important;" class="text-xs font-bold text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 px-3 py-1.5 bg-green-50 dark:bg-green-900/10 rounded-lg transition">
                                     Modificar
                                 </a>
-                                <a href="{% url 'eliminar_turno_slot' turno.actividad.id turno.fecha|date:'Y-m-d' turno.hora %}" 
+                                <a href="{% url 'eliminar_turno_slot' turno.actividad.id turno.fecha|date:'Y-m-d' turno.hora %}"
                                     style="display: none !important;" class="text-xs font-bold text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 px-3 py-1.5 bg-red-50 dark:bg-red-900/10 rounded-lg transition">
                                     Eliminar
                                 </a>

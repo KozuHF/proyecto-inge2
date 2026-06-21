@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 
 from apps.actividades.models import Actividad
-from .models import DIAS_HABILES, HORAS_VALIDAS, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, FERIADOS_INAMOVIBLES
+from .models import DIAS_HABILES, HORAS_VALIDAS, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, FERIADOS_INAMOVIBLES, fecha_limite_reserva
 
 
 class PasoTipoAbonoForm(forms.Form):
@@ -40,16 +40,67 @@ class PasoFechaForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}),
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Acota el selector de fecha al rango reservable: de hoy hasta un mes.
+        hoy = timezone.now().date()
+        self.fields["fecha"].widget.attrs["min"] = hoy.isoformat()
+        self.fields["fecha"].widget.attrs["max"] = fecha_limite_reserva().isoformat()
+
     def clean_fecha(self):
         fecha = self.cleaned_data["fecha"]
         hoy   = timezone.now().date()
         if fecha < hoy:
             raise forms.ValidationError(_("No podés reservar en una fecha pasada."))
+        if fecha > fecha_limite_reserva():
+            raise forms.ValidationError(_("Solo podés reservar hasta un mes a partir de hoy."))
         if fecha.weekday() not in DIAS_HABILES:
             raise forms.ValidationError(_("El establecimiento no abre los domingos."))
         if (fecha.month, fecha.day) in FERIADOS_INAMOVIBLES:
             raise forms.ValidationError(_("El establecimiento permanece cerrado por feriado nacional."))
         return fecha
+
+
+class PasoDiaSemanaForm(forms.Form):
+    """Paso 3 (abono mensual): el cliente elige el día de la semana y el mes."""
+
+    DIAS = [
+        (0, _("Lunes")), (1, _("Martes")), (2, _("Miércoles")),
+        (3, _("Jueves")), (4, _("Viernes")), (5, _("Sábado")),
+    ]
+
+    dia_semana = forms.TypedChoiceField(
+        label=_("Día de la semana"),
+        coerce=int,
+        choices=DIAS,
+        widget=forms.RadioSelect,
+    )
+    mes = forms.ChoiceField(
+        label=_("Mes"),
+        choices=[],  # se inyectan en __init__
+        widget=forms.Select,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        nombres = [
+            _("Enero"), _("Febrero"), _("Marzo"), _("Abril"), _("Mayo"), _("Junio"),
+            _("Julio"), _("Agosto"), _("Septiembre"), _("Octubre"), _("Noviembre"), _("Diciembre"),
+        ]
+        hoy = timezone.now().date()
+        limite = fecha_limite_reserva()
+        # Solo se puede reservar hasta un mes a partir de hoy: ofrecemos los meses
+        # que tengan al menos un día dentro de ese rango (mes actual y, si aplica,
+        # el del límite).
+        opciones = []
+        anio, mes = hoy.year, hoy.month
+        while (anio, mes) <= (limite.year, limite.month):
+            opciones.append((f"{anio}-{mes:02d}", f"{nombres[mes - 1]} {anio}"))
+            if mes == 12:
+                anio, mes = anio + 1, 1
+            else:
+                mes += 1
+        self.fields["mes"].choices = opciones
 
 
 class PasoHoraForm(forms.Form):
@@ -76,16 +127,18 @@ class PasoHoraForm(forms.Form):
             ).exclude(estado=Reserva.Estado.CANCELADA)
             horas_ocupadas = set(reservas_usuario.values_list("turno__hora", flat=True))
 
+        es_abono = fecha is None
         choices = []
         for info in horas_info:
             hora  = info["hora"]
             label = f"{hora:02d}:00 – {hora + 1:02d}:00"
-            if hora in horas_ocupadas:
-                label += _(" (Ya tenés una reserva a esta hora)")
-            elif info["lleno"]:
-                label += _(" (LLENO – lista de espera: %d)") % info["en_espera"]
-            else:
-                label += _(" (%d cupos disponibles)") % info["libres"]
+            if not es_abono:
+                if hora in horas_ocupadas:
+                    label += _(" (Ya estás anotado en esta clase)")
+                elif info["lleno"]:
+                    label += _(" (LLENO – lista de espera: %d)") % info["en_espera"]
+                else:
+                    label += _(" (%d cupos disponibles)") % info["libres"]
             choices.append((hora, label))
         
         self.fields["hora"].choices = choices
@@ -96,50 +149,6 @@ class PasoHoraForm(forms.Form):
         if hora is not None and str(hora) in self.horas_ocupadas:
             raise forms.ValidationError(_("No podés seleccionar un horario en el que ya tenés otra reserva."))
         return hora
-
-
-class PasoSeleccionFechasForm(forms.Form):
-    """Paso 5 (varios turnos): elegir qué días del mes reservar."""
-
-    fechas = forms.MultipleChoiceField(
-        label=_("Días a reservar"),
-        choices=[],
-        widget=forms.CheckboxSelectMultiple,
-        error_messages={"required": _("Seleccioná al menos un día.")},
-    )
-
-    def __init__(self, *args, fechas_candidatas=None, usuario=None, hora=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        fechas_candidatas = fechas_candidatas or []
-        nombres = [_("Lunes"), _("Martes"), _("Miércoles"), _("Jueves"), _("Viernes"), _("Sábado")]
-        
-        # Busquemos las fechas en las que el usuario ya tiene reserva a esa hora
-        fechas_ocupadas = set()
-        if usuario and hora is not None:
-            from .models import Reserva
-            reservas_usuario = Reserva.objects.filter(
-                usuario=usuario,
-                turno__hora=hora,
-                turno__fecha__in=fechas_candidatas
-            ).exclude(estado=Reserva.Estado.CANCELADA)
-            fechas_ocupadas = set(reservas_usuario.values_list("turno__fecha", flat=True))
-
-        self.fields["fechas"].choices = [
-            (
-                f.isoformat(),
-                f"{nombres[f.weekday()]} {f.day:02d}/{f.month:02d}/{f.year}" +
-                (_(" (Ya tenés una reserva a esta hora)") if f in fechas_ocupadas else ""),
-            )
-            for f in fechas_candidatas
-        ]
-        self.fechas_ocupadas = {f.isoformat() for f in fechas_ocupadas}
-
-    def clean_fechas(self):
-        fechas = self.cleaned_data.get("fechas")
-        for f_str in fechas:
-            if f_str in self.fechas_ocupadas:
-                raise forms.ValidationError(_("No podés seleccionar un día en el que ya tenés otra reserva a la misma hora."))
-        return fechas
 
 
 from .models import Turno
@@ -207,6 +216,18 @@ class TurnoForm(forms.ModelForm):
 
 
 from .models import HorarioDisponible, DIAS_SEMANA_CHOICES, HORAS_VALIDAS
+
+
+class EditarPreciosCuposForm(forms.ModelForm):
+    """Permite al admin cambiar solo precio y cupos de un HorarioDisponible."""
+
+    class Meta:
+        model = HorarioDisponible
+        fields = ["precio", "cupos", "activo"]
+        widgets = {
+            "precio": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 0.01, "step": "0.01"}),
+            "cupos": forms.NumberInput(attrs={"class": PANEL_INPUT_CLASS, "min": 1}),
+        }
 
 
 class HorarioDisponibleForm(forms.ModelForm):

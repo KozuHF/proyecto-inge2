@@ -1,0 +1,9 @@
+Hola {{ usuario.nombre }},
+
+Te informamos que la clase de {{ actividad }} del {{ dia_nombre }} {{ fecha }} a las {{ hora|stringformat:"02d" }}:00 fue cancelada por el club.
+
+Como tenías una seña registrada, el club te reembolsará ${{ monto_reembolso }}. Un representante del establecimiento se pondrá en contacto con vos para coordinar la devolución.
+
+Lamentamos los inconvenientes.
+
+— Equipo Club360

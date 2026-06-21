@@ -26,14 +26,16 @@ from apps.accounts.decorators import rol_requerido
 from apps.actividades.models import Actividad
 from .forms import (
     PasoActividadForm,
+    PasoDiaSemanaForm,
     PasoFechaForm,
     PasoHoraForm,
-    PasoSeleccionFechasForm,
     PasoTipoAbonoForm,
     TurnoForm,
     HorarioDisponibleForm,
+    EditarPreciosCuposForm,
 )
 from .models import GrupoReservaMensual, HorarioDisponible, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, Reserva, Turno
+from .abono_mensual import monto_total_desde_fechas
 from . import services
 
 logger = logging.getLogger(__name__)
@@ -119,17 +121,32 @@ def paso_fecha(request):
 
     actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
     es_varios = wizard["modo"] == MODO_VARIOS_TURNOS
-    form = PasoFechaForm(request.POST or None)
 
-    if request.method == "POST" and form.is_valid():
-        fecha = form.cleaned_data["fecha"]
-        horas_info = services.obtener_horas_disponibles(actividad, fecha)
-        if not horas_info:
-            form.add_error("fecha", _("No hay horarios disponibles configurados para este día de la semana."))
-        else:
-            wizard["fecha"] = fecha.isoformat()
-            _wizard_set(request, wizard)
-            return redirect("turnos:paso_hora")
+    if es_varios:
+        form = PasoDiaSemanaForm(request.POST or None)
+        if request.method == "POST" and form.is_valid():
+            dia_semana = form.cleaned_data["dia_semana"]
+            anio, mes = (int(x) for x in form.cleaned_data["mes"].split("-"))
+            fecha = services.primera_fecha_referencia(dia_semana, anio, mes)
+            if fecha is None:
+                form.add_error("mes", _("No quedan clases de ese día en el mes elegido."))
+            elif not services.obtener_horas_disponibles(actividad, fecha):
+                form.add_error("dia_semana", _("No hay horarios disponibles configurados para ese día de la semana."))
+            else:
+                wizard["fecha"] = fecha.isoformat()
+                _wizard_set(request, wizard)
+                return redirect("turnos:paso_hora")
+    else:
+        form = PasoFechaForm(request.POST or None)
+        if request.method == "POST" and form.is_valid():
+            fecha = form.cleaned_data["fecha"]
+            horas_info = services.obtener_horas_disponibles(actividad, fecha)
+            if not horas_info:
+                form.add_error("fecha", _("No hay horarios disponibles configurados para este día de la semana."))
+            else:
+                wizard["fecha"] = fecha.isoformat()
+                _wizard_set(request, wizard)
+                return redirect("turnos:paso_hora")
 
     return render(request, "turnos/paso_fecha.html", {
         "form": form,
@@ -154,11 +171,15 @@ def paso_hora(request):
     actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
     fecha = date_type.fromisoformat(wizard["fecha"])
     horas_info = services.obtener_horas_disponibles(actividad, fecha)
+    # En modo abono mensual, la fecha es solo de referencia (define el día de la
+    # semana): no bloqueamos la hora por tener reserva en esa fecha puntual. Las
+    # clases ya reservadas se informan, clase por clase, en el paso 5.
+    es_varios = wizard.get("modo") == MODO_VARIOS_TURNOS
     form = PasoHoraForm(
         request.POST or None,
         horas_info=horas_info,
-        usuario=request.user,
-        fecha=fecha,
+        usuario=None if es_varios else request.user,
+        fecha=None if es_varios else fecha,
     )
 
     if request.method == "POST" and form.is_valid():
@@ -244,35 +265,27 @@ def paso_seleccion_fechas(request):
     hora = wizard["hora"]
 
     try:
-        fechas_candidatas = services.obtener_fechas_candidatas_varios(fecha_ref, hora, actividad=actividad)
+        clases = services.obtener_estado_clases_abono(actividad, fecha_ref, hora, usuario=request.user)
     except ValidationError as exc:
         messages.error(request, exc.message)
         return redirect("turnos:paso_fecha")
 
-    form = PasoSeleccionFechasForm(
-        request.POST or None,
-        fechas_candidatas=fechas_candidatas,
-        usuario=request.user,
-        hora=hora,
-    )
+    disponibles = [c["fecha"] for c in clases if c["estado"] == "disponible"]
 
-    if request.method == "POST" and form.is_valid():
-        wizard["fechas_seleccionadas"] = form.cleaned_data["fechas"]
-        try:
-            services.calcular_monto_reserva_nueva(
-                actividad,
-                MODO_VARIOS_TURNOS,
-                fecha_ref,
-                hora,
-                fechas_seleccionadas=[
-                    date_type.fromisoformat(f) for f in wizard["fechas_seleccionadas"]
-                ],
-                usuario=request.user,
-            )
-            _wizard_set(request, wizard)
-            return redirect("pagos:pagar_wizard")
-        except ValidationError as exc:
-            messages.error(request, exc.message)
+    if request.method == "POST":
+        if not disponibles:
+            messages.error(request, _("No hay clases disponibles para reservar este mes en ese horario."))
+        else:
+            try:
+                services.calcular_monto_reserva_nueva(
+                    actividad, MODO_VARIOS_TURNOS, fecha_ref, hora,
+                    fechas_seleccionadas=disponibles, usuario=request.user,
+                )
+                wizard["fechas_seleccionadas"] = [f.isoformat() for f in disponibles]
+                _wizard_set(request, wizard)
+                return redirect("pagos:pagar_wizard")
+            except ValidationError as exc:
+                messages.error(request, exc.message)
 
     nombres_dia = [_("Lunes"), _("Martes"), _("Miércoles"), _("Jueves"), _("Viernes"), _("Sábado")]
     dia_nombre = nombres_dia[fecha_ref.weekday()] if fecha_ref.weekday() < 6 else ""
@@ -282,6 +295,12 @@ def paso_seleccion_fechas(request):
     ]
     mes_nombre = meses[fecha_ref.month - 1]
 
+    monto_total = 0
+    if disponibles:
+        monto_total, _regla, _desc = monto_total_desde_fechas(
+            actividad, disponibles, usuario=request.user, anio=fecha_ref.year, mes=fecha_ref.month
+        )
+
     from .penalidad_cancelaciones import mensaje_sin_beneficio_segunda_quincena
 
     aviso_sin_beneficio = mensaje_sin_beneficio_segunda_quincena(
@@ -289,7 +308,9 @@ def paso_seleccion_fechas(request):
     )
 
     return render(request, "turnos/paso_seleccion_fechas.html", {
-        "form": form,
+        "clases": clases,
+        "cantidad_disponibles": len(disponibles),
+        "monto_total": monto_total,
         "actividad": actividad,
         "fecha_ref": fecha_ref,
         "hora": hora,
@@ -300,6 +321,34 @@ def paso_seleccion_fechas(request):
         "paso": 5,
         "modo": wizard["modo"],
     })
+
+
+@login_required
+@require_POST
+def anotar_lista_espera_abono(request):
+    """Anota al cliente en la lista de espera de una clase llena, desde el paso 5 del abono."""
+    wizard = _wizard_get(request)
+    if wizard.get("modo") != MODO_VARIOS_TURNOS or "hora" not in wizard:
+        return redirect("turnos:paso_tipo_abono")
+
+    actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
+    hora = wizard["hora"]
+    try:
+        fecha = date_type.fromisoformat(request.POST.get("fecha", ""))
+    except ValueError:
+        messages.error(request, _("Fecha inválida."))
+        return redirect("turnos:paso_seleccion_fechas")
+
+    try:
+        services.anotar_en_lista_espera(request.user, actividad, fecha, hora)
+        messages.success(
+            request,
+            _("Te anotamos en la lista de espera de esa clase, sin cargo. "
+              "Si se libera un cupo te invitamos por mail."),
+        )
+    except ValidationError as exc:
+        messages.error(request, exc.message)
+    return redirect("turnos:paso_seleccion_fechas")
 
 
 # ── Mis reservas ──────────────────────────────────────────────────────────────
@@ -613,14 +662,16 @@ def panel_turnos(request):
     slots = list(turnos_qs)
 
     # Adjuntar estado de plantilla (activo/inactivo) a cada turno
-    horarios_info = HorarioDisponible.objects.values("actividad_id", "dia_semana", "hora", "activo")
+    horarios_info = HorarioDisponible.objects.values("pk", "actividad_id", "dia_semana", "hora", "activo")
     horarios_map = {
-        (h["actividad_id"], h["dia_semana"], h["hora"]): h["activo"]
+        (h["actividad_id"], h["dia_semana"], h["hora"]): h
         for h in horarios_info
     }
     for s in slots:
         key = (s.actividad_id, s.fecha.weekday(), s.hora)
-        s.horario_activo = horarios_map.get(key, True)
+        h = horarios_map.get(key)
+        s.horario_activo = h["activo"] if h else True
+        s.horario_pk = h["pk"] if h else None
 
     # Filtrar por ocupación si se pidió (solo en el backend si se especificó fecha)
     if fecha and estado_ocupacion != "todos":
@@ -954,73 +1005,115 @@ def crear_horario_disponible(request):
 @rol_requerido("admin")
 def editar_horario_disponible(request, pk):
     """
-    El admin puede modificar cupos o activar/desactivar un horario existente.
-    Si se reactiva un horario inactivo, regenera los turnos faltantes de los próximos 6 meses.
+    El admin puede modificar precio, cupos y estado activo de un HorarioDisponible.
+
+    Reglas de precio:
+    - Si hay clientes anotados en turnos dentro del próximo mes, el nuevo precio
+      se aplica solo a los turnos posteriores a ese límite (los próximos no se tocan).
+    - Si no hay clientes en los próximos turnos, se actualiza el precio en todos.
+
+    Reglas de cupos:
+    - No se puede bajar por debajo del máximo de anotados en cualquier turno futuro.
     """
+    from django.db.models import Count, Max, Q
+    from .models import fecha_limite_reserva
+
     horario = get_object_or_404(HorarioDisponible, pk=pk)
     estaba_inactivo = not horario.activo
-    import json
-    from collections import defaultdict
-
-    # Determinar qué franjas tienen horarios activos en la base de datos (excluyendo el actual)
-    horarios_existentes = list(
-        HorarioDisponible.objects.exclude(pk=pk).filter(activo=True).values("actividad_id", "dia_semana", "hora")
-    )
-    horarios_existentes_json = json.dumps(horarios_existentes)
-
-    # Determinar qué franjas tienen turnos futuros reales en BD para la ayuda
     hoy = timezone.now().date()
-    future_turnos = Turno.objects.filter(fecha__gte=hoy).order_by("fecha")
 
-    turnos_por_slot = defaultdict(list)
-    for t in future_turnos:
-        wd = t.fecha.weekday()
-        slot_key = f"{t.actividad_id}_{wd}_{t.hora}"
-        turnos_por_slot[slot_key].append(t.fecha.isoformat())
+    # Turnos futuros de este horario (por actividad + día + hora)
+    django_week_day = horario.dia_semana + 2  # 0=Lunes → 2, ..., 5=Sábado → 7
+    turnos_futuros_qs = Turno.objects.filter(
+        actividad=horario.actividad,
+        hora=horario.hora,
+        fecha__gte=hoy,
+        fecha__week_day=django_week_day,
+    )
 
-    turnos_por_slot_json = json.dumps(dict(turnos_por_slot))
+    # Máximo de anotados en cualquier turno futuro (para validación de cupos)
+    estados_activos = [Reserva.Estado.CONFIRMADA, Reserva.Estado.INVITADO]
+    max_ocupados = (
+        turnos_futuros_qs
+        .annotate(ocupados=Count("reservas", filter=Q(reservas__estado__in=estados_activos)))
+        .aggregate(m=Max("ocupados"))["m"]
+    ) or 0
 
-    form = HorarioDisponibleForm(request.POST or None, instance=horario)
+    form = EditarPreciosCuposForm(request.POST or None, instance=horario)
     if request.method == "POST" and form.is_valid():
-        try:
-            with transaction.atomic():
-                h = form.save(commit=False)
-                # Borrar duplicados que no tengan turnos futuros para evitar error de constraint único
-                duplicate = HorarioDisponible.objects.filter(
-                    actividad=h.actividad,
-                    dia_semana=h.dia_semana,
-                    hora=h.hora
-                ).exclude(pk=h.pk)
-                if duplicate.exists():
-                    duplicate.delete()
-                h.full_clean()
-                h.save()
-            # Si se acaba de reactivar, generar los turnos que faltan
-            se_reactivo = estaba_inactivo and h.activo
-            if se_reactivo:
-                creados, omitidos = services.generar_turnos_desde_horario(h, meses=120)
-                messages.success(
-                    request,
-                    _(
-                        "Horario reactivado. "
-                        "Se generaron %(creados)d turno(s) "
-                        "(%(omitidos)d fecha(s) omitida(s) por ser feriado o ya existir)."
-                    ) % {"creados": creados, "omitidos": omitidos},
-                )
-            else:
-                messages.success(request, _("Horario actualizado."))
-            return redirect("panel_turnos")
-        except ValidationError as e:
-            form.add_error(None, e)
+        nuevo_precio = form.cleaned_data["precio"]
+        nuevos_cupos = form.cleaned_data["cupos"]
 
+        # Validar cupos
+        if nuevos_cupos < max_ocupados:
+            form.add_error(
+                "cupos",
+                _(
+                    "No podés bajar de %(n)d: hay %(n)d persona(s) anotada(s) en la clase más ocupada."
+                ) % {"n": max_ocupados},
+            )
+        else:
+            try:
+                with transaction.atomic():
+                    precio_viejo = horario.precio
+                    precio_cambio = nuevo_precio != precio_viejo
+
+                    h = form.save(commit=False)
+                    h.save()
+
+                    if precio_cambio:
+                        limite = fecha_limite_reserva()
+                        tiene_clientes_proximos = turnos_futuros_qs.filter(
+                            fecha__lte=limite,
+                            reservas__estado__in=estados_activos,
+                        ).exists()
+
+                        if tiene_clientes_proximos:
+                            # Actualizar solo los turnos más allá del límite
+                            turnos_futuros_qs.filter(fecha__gt=limite).update(precio_override=nuevo_precio)
+                            messages.warning(
+                                request,
+                                _(
+                                    "Precio actualizado a $%(precio)s. "
+                                    "Los turnos con clientes anotados dentro del próximo mes "
+                                    "conservan el precio anterior ($%(viejo)s)."
+                                ) % {"precio": nuevo_precio, "viejo": precio_viejo},
+                            )
+                        else:
+                            # Sin clientes próximos: actualizar todos
+                            turnos_futuros_qs.update(precio_override=nuevo_precio)
+                            messages.success(request, _("Precio actualizado a $%(precio)s en todos los turnos futuros.") % {"precio": nuevo_precio})
+                    else:
+                        messages.success(request, _("Horario actualizado."))
+
+                    # Actualizar cupos en todos los turnos futuros
+                    if nuevos_cupos != horario.cupos:
+                        turnos_futuros_qs.update(cupos=nuevos_cupos)
+
+                    # Si se reactivó, generar turnos faltantes
+                    if estaba_inactivo and h.activo:
+                        creados, omitidos = services.generar_turnos_desde_horario(h, meses=120)
+                        messages.success(
+                            request,
+                            _(
+                                "Horario reactivado. Se generaron %(creados)d turno(s) "
+                                "(%(omitidos)d omitido(s) por feriado o ya existir)."
+                            ) % {"creados": creados, "omitidos": omitidos},
+                        )
+
+                return redirect("panel_turnos")
+            except ValidationError as e:
+                form.add_error(None, e)
+
+    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
     return render(
         request,
         "turnos/editar_horario_disponible.html",
         {
             "form": form,
             "horario": horario,
-            "horarios_existentes_json": horarios_existentes_json,
-            "turnos_por_slot_json": turnos_por_slot_json,
+            "max_ocupados": max_ocupados,
+            "dia_nombre": dias[horario.dia_semana],
         },
     )
 
@@ -1029,18 +1122,82 @@ def editar_horario_disponible(request, pk):
 @rol_requerido("admin")
 def eliminar_horario_disponible(request, pk):
     """
-    Elimina un horario disponible.
-    No cancela los turnos/reservas ya existentes; solo deja de generar nuevos.
-    """
-    horario = get_object_or_404(HorarioDisponible, pk=pk)
-    if request.method == "POST":
-        str_horario = str(horario)
-        horario.delete()
-        messages.success(
-            request,
-            _("Horario eliminado: %(horario)s. Los turnos ya creados no se ven afectados.")
-            % {"horario": str_horario},
-        )
-        return redirect("panel_turnos")
+    Elimina una clase (HorarioDisponible) y cancela todos sus turnos futuros.
 
-    return render(request, "turnos/eliminar_horario_confirm.html", {"horario": horario})
+    Compensaciones por reserva cancelada:
+    - PAGADO o abonado mensual → crédito gratis (otorgar_credito_cancelacion).
+    - SEÑADO                   → email de reembolso pendiente.
+    - PENDIENTE                → se cancela sin cargo.
+    """
+    from apps.creditos import services as creditos_services
+    from .notificaciones import enviar_aviso_cancelacion_clase
+
+    horario = get_object_or_404(HorarioDisponible, pk=pk)
+    hoy = timezone.now().date()
+    django_week_day = horario.dia_semana + 2
+
+    # Turnos futuros de esta franja con reservas activas
+    turnos_futuros = Turno.objects.filter(
+        actividad=horario.actividad,
+        hora=horario.hora,
+        fecha__gte=hoy,
+        fecha__week_day=django_week_day,
+    ).prefetch_related("reservas__usuario")
+
+    # Calcular impacto para mostrar en la pantalla de confirmación (GET) y ejecutar (POST)
+    reservas_activas = []
+    for turno in turnos_futuros:
+        for reserva in turno.reservas.filter(
+            estado=Reserva.Estado.CONFIRMADA
+        ).select_related("usuario", "turno__actividad", "grupo_mensual"):
+            reservas_activas.append(reserva)
+
+    creditos_a_emitir = [
+        r for r in reservas_activas
+        if r.estado_pago == Reserva.EstadoPago.PAGADO or r.es_abonado_mensual
+    ]
+    reembolsos_pendientes = [
+        r for r in reservas_activas
+        if r.estado_pago == Reserva.EstadoPago.SENADO
+    ]
+
+    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
+
+    if request.method == "POST":
+        with transaction.atomic():
+            # Emitir créditos
+            for reserva in creditos_a_emitir:
+                creditos_services.otorgar_credito_cancelacion(reserva)
+                reserva.estado = Reserva.Estado.CANCELADA
+                reserva.save(update_fields=["estado"])
+
+            # Reembolsos: cancelar y notificar
+            for reserva in reembolsos_pendientes:
+                monto = reserva.precio_abonado or 0
+                reserva.estado = Reserva.Estado.CANCELADA
+                reserva.save(update_fields=["estado"])
+                enviar_aviso_cancelacion_clase(reserva, monto)
+
+            # Cancelar el resto (PENDIENTE)
+            for reserva in reservas_activas:
+                if reserva.estado != Reserva.Estado.CANCELADA:
+                    reserva.estado = Reserva.Estado.CANCELADA
+                    reserva.save(update_fields=["estado"])
+
+            horario.delete()
+
+        return render(request, "turnos/eliminar_horario_resultado.html", {
+            "creditos_emitidos": creditos_a_emitir,
+            "reembolsos": reembolsos_pendientes,
+            "sin_cargo": [r for r in reservas_activas if r not in creditos_a_emitir and r not in reembolsos_pendientes],
+            "dia_nombre": dias[horario.dia_semana],
+            "horario_str": str(horario),
+        })
+
+    return render(request, "turnos/eliminar_horario_confirm.html", {
+        "horario": horario,
+        "dia_nombre": dias[horario.dia_semana],
+        "creditos_a_emitir": creditos_a_emitir,
+        "reembolsos_pendientes": reembolsos_pendientes,
+        "total_reservas": len(reservas_activas),
+    })
