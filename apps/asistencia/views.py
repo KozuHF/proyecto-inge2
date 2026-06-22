@@ -93,7 +93,11 @@ def marcar_por_dni(request):
                     asistencia = services.obtener_o_crear_asistencia(reserva)
                 except ValidationError:
                     continue
-                reservas_info.append({"reserva": reserva, "asistencia": asistencia})
+                reservas_info.append({
+                    "reserva": reserva,
+                    "asistencia": asistencia,
+                    "pago_pendiente": services.pago_pendiente(reserva),
+                })
 
     return render(request, "asistencia/marcar_por_dni.html", {
         "form": form,

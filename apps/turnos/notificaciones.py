@@ -243,3 +243,33 @@ def enviar_aviso_admin_lista_espera(total: int) -> bool:
     except Exception:
         logger.exception("Error al enviar aviso de lista de espera a admins.")
         return False
+
+
+def enviar_aviso_cancelacion_clase(reserva: "Reserva", monto_reembolso: Decimal) -> bool:
+    """Notifica al cliente que su clase fue cancelada por el club y se le reembolsará la seña."""
+    turno = reserva.turno
+    dia_nombre = DIAS_SEMANA[turno.fecha.weekday()]
+    contexto = {
+        "usuario": reserva.usuario,
+        "actividad": turno.actividad.get_nombre_display(),
+        "fecha": turno.fecha.strftime("%d/%m/%Y"),
+        "dia_nombre": dia_nombre,
+        "hora": turno.hora,
+        "monto_reembolso": monto_reembolso,
+    }
+    cuerpo_texto = render_to_string("turnos/emails/cancelacion_clase_reembolso.txt", contexto)
+    cuerpo_html = render_to_string("turnos/emails/cancelacion_clase_reembolso.html", contexto)
+    try:
+        mail = EmailMultiAlternatives(
+            "Tu clase fue cancelada — Club360",
+            cuerpo_texto,
+            settings.DEFAULT_FROM_EMAIL,
+            [reserva.usuario.email],
+        )
+        mail.attach_alternative(cuerpo_html, "text/html")
+        mail.send()
+        logger.info("Aviso de cancelación con reembolso enviado a %s.", reserva.usuario.email)
+        return True
+    except Exception:
+        logger.exception("Error al enviar aviso de cancelación a %s.", reserva.usuario.email)
+        return False

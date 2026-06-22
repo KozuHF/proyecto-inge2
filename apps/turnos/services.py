@@ -24,9 +24,11 @@ from .models import (
     GrupoReservaMensual,
     Reserva,
     Turno,
+    _validar_dentro_de_limite,
     _validar_dia_habil,
     _validar_hora,
     _validar_no_pasado,
+    fecha_limite_reserva,
 )
 
 
@@ -194,6 +196,109 @@ def obtener_fechas_candidatas_varios(fecha_referencia: date, hora: int, activida
     return fechas
 
 
+_NOMBRES_DIA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+
+def primera_fecha_referencia(dia_semana: int, anio: int, mes: int):
+    """
+    Primera fecha del mes que cae en `dia_semana` (0=lunes … 5=sábado) y no es
+    pasada. Sirve de fecha de referencia para el abono cuando el cliente eligió
+    día de la semana + mes (en vez de una fecha concreta). Devuelve None si no
+    queda ninguna fecha futura de ese día en el mes.
+    """
+    hoy = timezone.now().date()
+    limite = fecha_limite_reserva()
+    for f in _fechas_del_dia_en_mes(dia_semana, anio, mes):
+        if hoy <= f <= limite:
+            return f
+    return None
+
+
+def obtener_estado_clases_abono(actividad, fecha_referencia: date, hora: int, usuario=None) -> list[dict]:
+    """
+    Devuelve TODAS las clases del mes que caen en el día de la semana de
+    `fecha_referencia` (desde hoy en adelante), cada una con su estado:
+
+      - "no_disponible" : feriado u otro día no hábil.
+      - "ya_anotado"    : el usuario ya tiene una reserva confirmada/invitada.
+      - "en_espera"     : el usuario ya está anotado en la lista de espera.
+      - "llena"         : el turno está completo (ofrece anotarse en lista de espera).
+      - "disponible"    : hay cupo; se reservará como parte del abono.
+
+    Pensado para el paso 5 del abono mensual: el cliente ya no elige, ve todas
+    las clases y se reservan automáticamente las "disponible".
+    """
+    from .models import HorarioDisponible
+
+    _validar_dia_habil(fecha_referencia)
+    _validar_hora(hora)
+
+    horario = HorarioDisponible.objects.filter(
+        actividad=actividad, dia_semana=fecha_referencia.weekday(), hora=hora, activo=True,
+    ).first()
+    if horario is None:
+        raise ValidationError(
+            _("El horario seleccionado no está disponible para esta actividad.")
+        )
+    cupos_horario = horario.cupos_efectivos()
+
+    hoy = timezone.now().date()
+    limite = fecha_limite_reserva()
+    fechas = _fechas_del_dia_en_mes(fecha_referencia.weekday(), fecha_referencia.year, fecha_referencia.month)
+
+    turnos = {
+        t.fecha: t
+        for t in Turno.objects.filter(
+            actividad=actividad, fecha__in=fechas, hora=hora
+        ).prefetch_related("reservas")
+    }
+
+    reservas_usuario = {}
+    if usuario is not None:
+        for r in Reserva.objects.filter(
+            usuario=usuario, turno__actividad=actividad, turno__fecha__in=fechas, turno__hora=hora,
+        ).exclude(estado=Reserva.Estado.CANCELADA).select_related("turno"):
+            reservas_usuario[r.turno.fecha] = r
+
+    clases = []
+    for f in fechas:
+        if f < hoy or f > limite:
+            continue
+
+        item = {
+            "fecha": f,
+            "dia_label": f"{_NOMBRES_DIA[f.weekday()]} {f.day:02d}/{f.month:02d}/{f.year}",
+            "estado": "disponible",
+            "libres": 0,
+            "en_espera": 0,
+        }
+
+        try:
+            _validar_dia_habil(f)
+        except ValidationError:
+            item["estado"] = "no_disponible"
+            clases.append(item)
+            continue
+
+        reserva = reservas_usuario.get(f)
+        if reserva is not None:
+            item["estado"] = "en_espera" if reserva.estado == Reserva.Estado.EN_ESPERA else "ya_anotado"
+            clases.append(item)
+            continue
+
+        turno = turnos.get(f)
+        if turno is not None:
+            item["libres"] = turno.cupos_libres
+            item["en_espera"] = turno.lista_espera.count()
+            item["estado"] = "llena" if turno.esta_lleno else "disponible"
+        else:
+            item["libres"] = cupos_horario
+            item["estado"] = "disponible"
+        clases.append(item)
+
+    return clases
+
+
 def _validar_fechas_seleccionadas(
     fechas_seleccionadas: list[date],
     fecha_referencia: date,
@@ -209,6 +314,7 @@ def _validar_fechas_seleccionadas(
     for f in fechas_seleccionadas:
         _validar_dia_habil(f)
         _validar_no_pasado(f)
+        _validar_dentro_de_limite(f)
     return sorted(fechas_seleccionadas)
 
 
@@ -227,6 +333,7 @@ def calcular_monto_reserva_nueva(
 
     if modo == MODO_TURNO_UNICO:
         _validar_no_pasado(fecha)
+        _validar_dentro_de_limite(fecha)
         _validar_dia_habil(fecha)
         _validar_hora(hora)
         return actividad.precio_turno, 1
@@ -248,6 +355,7 @@ def calcular_monto_reserva_nueva(
 @transaction.atomic
 def reservar_turno_individual(usuario, actividad: Actividad, fecha: date, hora: int) -> Reserva:
     _validar_no_pasado(fecha)
+    _validar_dentro_de_limite(fecha)
     _validar_dia_habil(fecha)
     _validar_hora(hora)
 
@@ -271,6 +379,7 @@ def anotar_en_lista_espera(usuario, actividad: Actividad, fecha: date, hora: int
     paga si más adelante se libera un cupo, se lo invita y acepta.
     """
     _validar_no_pasado(fecha)
+    _validar_dentro_de_limite(fecha)
     _validar_dia_habil(fecha)
     _validar_hora(hora)
 
