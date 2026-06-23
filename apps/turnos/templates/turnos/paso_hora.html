@@ -43,13 +43,17 @@
         {% endfor %}
         {{ form.hora.errors }}
 
+        <p id="aviso-anotado" class="hidden p-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+          Ya estás anotado en todas las clases disponibles de este horario.
+        </p>
+
         <div class="flex gap-3 pt-2">
           <a href="{% url 'turnos:paso_fecha' %}"
             class="flex-1 text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
             ← Volver
           </a>
-          <button type="submit"
-            class="flex-1 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
+          <button type="submit" id="btn-siguiente"
+            class="hidden flex-1 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
             Siguiente →
           </button>
         </div>
@@ -58,4 +62,27 @@
 
   </div>
 </div>
+
+<script>
+  (function () {
+    const form  = document.querySelector('form');
+    const btn   = document.getElementById('btn-siguiente');
+    const aviso = document.getElementById('aviso-anotado');
+    const seleccionables = form.querySelectorAll('input[name="hora"]:not([disabled])');
+
+    if (seleccionables.length === 0) {
+      // Todas las horas ya están reservadas por el cliente: no hay nada que elegir.
+      aviso.classList.remove('hidden');
+      return;  // el botón ya está oculto
+    }
+
+    function sync() {
+      // El botón aparece recién cuando hay un horario seleccionado.
+      const elegido = form.querySelector('input[name="hora"]:checked');
+      btn.classList.toggle('hidden', !elegido);
+    }
+    seleccionables.forEach(r => r.addEventListener('change', sync));
+    sync();
+  })();
+</script>
 {% endblock content %}

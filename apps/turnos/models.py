@@ -1,4 +1,6 @@
+import calendar
 import uuid
+from datetime import date as _date
 from decimal import Decimal
 from django.conf import settings
 from django.db import models
@@ -62,6 +64,21 @@ def _validar_no_pasado(fecha):
     hoy = timezone.now().date()
     if fecha < hoy:
         raise ValidationError(_("No se puede reservar un turno en una fecha pasada."))
+
+
+# Máximo que un cliente puede reservar hacia adelante: un mes a partir de hoy.
+def fecha_limite_reserva():
+    """Última fecha reservable: un mes a partir de hoy (abonado o no)."""
+    hoy = timezone.now().date()
+    mes = hoy.month % 12 + 1
+    anio = hoy.year + (1 if hoy.month == 12 else 0)
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    return _date(anio, mes, min(hoy.day, ultimo_dia))
+
+
+def _validar_dentro_de_limite(fecha):
+    if fecha > fecha_limite_reserva():
+        raise ValidationError(_("Solo se puede reservar hasta un mes a partir de hoy."))
 
 
 # ── HorarioDisponible ────────────────────────────────────────────────────────

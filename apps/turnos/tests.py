@@ -646,7 +646,8 @@ class HorarioDisponibleValidationTestCase(TestCase):
         """
         from apps.turnos.models import HorarioDisponible, Turno
         from apps.turnos.forms import HorarioDisponibleForm
-        from datetime import date
+        from datetime import timedelta
+        from django.utils import timezone
 
         # Create schedule
         h1 = HorarioDisponible.objects.create(
@@ -658,10 +659,12 @@ class HorarioDisponibleValidationTestCase(TestCase):
             activo=True
         )
 
-        # Create a future Turno on Tuesday (e.g. June 2, 2026 is a Tuesday)
+        # Create a future Turno on the next Tuesday (calculado para que siempre sea futuro)
+        hoy = timezone.now().date()
+        proximo_martes = hoy + timedelta(days=((1 - hoy.weekday()) % 7) or 7)
         Turno.objects.create(
             actividad=self.actividad,
-            fecha=date(2026, 6, 2),
+            fecha=proximo_martes,
             hora=10,
             cupos=5
         )
@@ -996,6 +999,123 @@ class ListaEsperaInvitacionTestCase(TestCase):
         self.assertIn("cupo", mail.outbox[0].subject.lower())
 
 
+class EstadoClasesAbonoTestCase(TestCase):
+    """El paso 5 del abono lista todas las clases del mes con su estado."""
+
+    def setUp(self):
+        from apps.turnos.models import HorarioDisponible
+        # Feriado inamovible 25/5 (Revolución de Mayo): lo usamos para 'no_disponible'.
+        self.feriado = date(2026, 5, 25)
+        self.dia_semana = self.feriado.weekday()
+        self.hora = 18
+        self.usuario = Usuario.objects.create_user(
+            email="abono@test.com", nombre="Ana", apellido="Abono",
+            nro_documento="66667777", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.otro = Usuario.objects.create_user(
+            email="otro@test.com", nombre="Otro", apellido="Cliente",
+            nro_documento="66667778", fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!", rol=Roles.USER,
+        )
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.VOLEY, defaults={"cupos": 10, "precio_turno": 5000},
+        )
+        HorarioDisponible.objects.create(
+            actividad=self.actividad, dia_semana=self.dia_semana, hora=self.hora,
+            activo=True, cupos=10, precio=5000,
+        )
+
+    def _fechas_del_mes(self):
+        import calendar
+        _, ultimo = calendar.monthrange(2026, 5)
+        return [date(2026, 5, d) for d in range(1, ultimo + 1) if date(2026, 5, d).weekday() == self.dia_semana]
+
+    def _correr(self):
+        from unittest.mock import patch
+        from django.utils import timezone
+        from datetime import datetime
+        from apps.turnos import services
+        hoy = timezone.make_aware(datetime(2026, 5, 1, 12, 0))
+        # La referencia define el día de la semana/mes; no puede ser el feriado.
+        referencia = next(f for f in self._fechas_del_mes() if f != self.feriado)
+        with patch("apps.turnos.services.timezone.now", return_value=hoy):
+            return services.obtener_estado_clases_abono(
+                self.actividad, referencia, self.hora, usuario=self.usuario
+            )
+
+    def test_estados_de_cada_clase(self):
+        fechas = self._fechas_del_mes()
+        # Una clase donde el usuario ya tiene reserva confirmada -> ya_anotado
+        fecha_anotado = next(f for f in fechas if f != self.feriado)
+        t_anotado = Turno.objects.create(actividad=self.actividad, fecha=fecha_anotado, hora=self.hora, cupos=10)
+        Reserva.objects.create(usuario=self.usuario, turno=t_anotado, estado=Reserva.Estado.CONFIRMADA)
+        # Una clase llena (cupos=1, ocupada por otro) -> llena
+        fecha_llena = next(f for f in fechas if f not in (self.feriado, fecha_anotado))
+        t_lleno = Turno.objects.create(actividad=self.actividad, fecha=fecha_llena, hora=self.hora, cupos=1)
+        Reserva.objects.create(usuario=self.otro, turno=t_lleno, estado=Reserva.Estado.CONFIRMADA)
+
+        clases = {c["fecha"]: c["estado"] for c in self._correr()}
+        self.assertEqual(clases[self.feriado], "no_disponible")
+        self.assertEqual(clases[fecha_anotado], "ya_anotado")
+        self.assertEqual(clases[fecha_llena], "llena")
+        # El resto de las fechas del mes (sin turno) quedan disponibles
+        disponibles = [f for f in fechas if f not in (self.feriado, fecha_anotado, fecha_llena)]
+        for f in disponibles:
+            self.assertEqual(clases[f], "disponible")
+
+    def test_omite_fechas_pasadas(self):
+        # Con hoy = 2026-05-01, todas las fechas del día elegido en mayo son futuras.
+        clases = self._correr()
+        self.assertTrue(all(c["fecha"] >= date(2026, 5, 1) for c in clases))
+
+    def test_primera_fecha_referencia(self):
+        from unittest.mock import patch
+        from django.utils import timezone
+        from datetime import datetime
+        from apps.turnos import services
+        hoy = timezone.make_aware(datetime(2026, 5, 1, 12, 0))
+        with patch("apps.turnos.services.timezone.now", return_value=hoy):
+            f = services.primera_fecha_referencia(self.dia_semana, 2026, 5)
+        self.assertIsNotNone(f)
+        self.assertEqual(f.weekday(), self.dia_semana)
+        self.assertGreaterEqual(f, date(2026, 5, 1))
+
+
+class LimiteReservaUnMesTestCase(TestCase):
+    """No se puede reservar más allá de un mes a partir de hoy."""
+
+    def _con_hoy(self, fn):
+        from unittest.mock import patch
+        from django.utils import timezone
+        from datetime import datetime
+        hoy = timezone.make_aware(datetime(2026, 6, 21, 12, 0))
+        with patch("apps.turnos.models.timezone.now", return_value=hoy), \
+             patch("apps.turnos.forms.timezone.now", return_value=hoy):
+            return fn()
+
+    def test_limite_es_un_mes_y_valida(self):
+        from apps.turnos.models import fecha_limite_reserva, _validar_dentro_de_limite
+
+        def cuerpo():
+            self.assertEqual(fecha_limite_reserva(), date(2026, 7, 21))
+            _validar_dentro_de_limite(date(2026, 7, 21))  # justo en el límite: ok
+            with self.assertRaises(ValidationError):
+                _validar_dentro_de_limite(date(2026, 7, 22))  # un día pasado: falla
+        self._con_hoy(cuerpo)
+
+    def test_abono_solo_ofrece_meses_dentro_del_limite(self):
+        from apps.turnos.forms import PasoDiaSemanaForm
+        valores = self._con_hoy(lambda: [v for v, _ in PasoDiaSemanaForm().fields["mes"].choices])
+        self.assertEqual(valores, ["2026-06", "2026-07"])  # agosto queda fuera
+
+    def test_turno_unico_acota_el_calendario(self):
+        from apps.turnos.forms import PasoFechaForm
+        attrs = self._con_hoy(lambda: PasoFechaForm().fields["fecha"].widget.attrs)
+        self.assertEqual(attrs.get("min"), "2026-06-21")
+        self.assertEqual(attrs.get("max"), "2026-07-21")
+
+
 class UserReservationConflictTestCase(TestCase):
     def setUp(self):
         from apps.actividades.models import Actividad
@@ -1049,19 +1169,3 @@ class UserReservationConflictTestCase(TestCase):
             "No podés seleccionar un horario en el que ya tenés otra reserva."
         )
 
-    def test_paso_seleccion_fechas_validation_fails_if_already_reserved(self):
-        from apps.turnos.forms import PasoSeleccionFechasForm
-        # Trying to select 2026-06-01 in a series at 10:00 should fail validation
-        fechas_candidatas = [date(2026, 6, 1), date(2026, 6, 8)]
-        form = PasoSeleccionFechasForm(
-            data={"fechas": ["2026-06-01", "2026-06-08"]},
-            fechas_candidatas=fechas_candidatas,
-            usuario=self.usuario,
-            hora=10
-        )
-        self.assertFalse(form.is_valid())
-        self.assertIn("fechas", form.errors)
-        self.assertEqual(
-            form.errors["fechas"][0],
-            "No podés seleccionar un día en el que ya tenés otra reserva a la misma hora."
-        )

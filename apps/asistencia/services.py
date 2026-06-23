@@ -68,12 +68,14 @@ def _reserva_elegible(reserva: Reserva) -> bool:
     Reglas de elegibilidad del QR según tipo de reserva:
     - Abonado mensual: elegible desde que reserva (tiene hasta el día 10 del
       mes para pagar el abono).
-    - Turno individual: elegible solo con el 100% pagado (señas no alcanzan).
+    - Turno individual: elegible con PAGADO o SEÑADO (seña parcial). Con seña
+      se genera el QR y se muestra la clase, pero el empleado no puede marcar
+      asistencia hasta que el pago esté completo.
     """
     if reserva.estado != Reserva.Estado.CONFIRMADA:
         return False
     return (
-        reserva.estado_pago == Reserva.EstadoPago.PAGADO
+        reserva.estado_pago in (Reserva.EstadoPago.PAGADO, Reserva.EstadoPago.SENADO)
         or reserva.es_abonado_mensual
     )
 
@@ -94,11 +96,8 @@ def _abono_con_plazo_vencido(reserva: Reserva) -> bool:
 
 
 def pago_pendiente(reserva: Reserva) -> bool:
-    """Abonado elegible pero con el abono aún impago (para avisos en la UI)."""
-    return (
-        reserva.es_abonado_mensual
-        and reserva.estado_pago != Reserva.EstadoPago.PAGADO
-    )
+    """Reserva elegible pero sin pago completo (abono impago o turno individual con seña)."""
+    return reserva.estado_pago != Reserva.EstadoPago.PAGADO
 
 
 def reservas_marcables_ahora(usuario) -> list[Reserva]:
