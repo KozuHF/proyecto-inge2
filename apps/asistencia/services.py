@@ -96,7 +96,10 @@ def _abono_con_plazo_vencido(reserva: Reserva) -> bool:
 
 
 def pago_pendiente(reserva: Reserva) -> bool:
-    """Reserva elegible pero sin pago completo (abono impago o turno individual con seña)."""
+    """Reserva elegible pero sin pago completo (turno individual con seña).
+    Un abonado dentro del plazo de gracia puede asistir aunque no haya pagado."""
+    if reserva.es_abonado_mensual and not _abono_con_plazo_vencido(reserva):
+        return False
     return reserva.estado_pago != Reserva.EstadoPago.PAGADO
 
 
