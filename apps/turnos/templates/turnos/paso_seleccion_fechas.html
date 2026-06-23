@@ -67,10 +67,12 @@
              class="flex-1 text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
             ← Volver
           </a>
+          {% if cantidad_disponibles %}
           <button type="submit"
                   class="flex-1 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
-            Continuar al pago →
+            Confirmar abono →
           </button>
+          {% endif %}
         </div>
       </form>
     </div>

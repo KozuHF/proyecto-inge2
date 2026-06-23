@@ -68,33 +68,47 @@ class PasoHoraForm(forms.Form):
         
         # Busquemos las horas en las que el usuario ya tiene reserva ese día
         horas_ocupadas = set()
+        horas_en_espera = set()
         if usuario and fecha:
             from .models import Reserva
             reservas_usuario = Reserva.objects.filter(
                 usuario=usuario,
                 turno__fecha=fecha
             ).exclude(estado=Reserva.Estado.CANCELADA)
-            horas_ocupadas = set(reservas_usuario.values_list("turno__hora", flat=True))
+            horas_ocupadas = set(
+                reservas_usuario.exclude(estado=Reserva.Estado.EN_ESPERA)
+                .values_list("turno__hora", flat=True)
+            )
+            horas_en_espera = set(
+                reservas_usuario.filter(estado=Reserva.Estado.EN_ESPERA)
+                .values_list("turno__hora", flat=True)
+            )
 
         choices = []
         for info in horas_info:
             hora  = info["hora"]
             label = f"{hora:02d}:00 – {hora + 1:02d}:00"
-            if hora in horas_ocupadas:
-                label += _(" (Ya tenés una reserva a esta hora)")
-            elif info["lleno"]:
-                label += _(" (LLENO – lista de espera: %d)") % info["en_espera"]
-            else:
-                label += _(" (%d cupos disponibles)") % info["libres"]
+            if not es_abono:
+                if hora in horas_ocupadas:
+                    label += _(" (Ya estás anotado en esta clase)")
+                elif hora in horas_en_espera:
+                    label += _(" (Ya estás en lista de espera para esta clase)")
+                elif info["lleno"]:
+                    label += _(" (LLENO – lista de espera: %d)") % info["en_espera"]
+                else:
+                    label += _(" (%d cupos disponibles)") % info["libres"]
             choices.append((hora, label))
         
         self.fields["hora"].choices = choices
         self.horas_ocupadas = {str(h) for h in horas_ocupadas}
+        self.horas_en_espera = {str(h) for h in horas_en_espera}
 
     def clean_hora(self):
         hora = self.cleaned_data.get("hora")
         if hora is not None and str(hora) in self.horas_ocupadas:
             raise forms.ValidationError(_("No podés seleccionar un horario en el que ya tenés otra reserva."))
+        if hora is not None and str(hora) in self.horas_en_espera:
+            raise forms.ValidationError(_("Ya estás en lista de espera para esta clase."))
         return hora
 
 
