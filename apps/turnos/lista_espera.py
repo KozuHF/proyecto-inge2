@@ -81,11 +81,15 @@ def ofrecer_cupo_siguiente(turno: Turno) -> int:
             break
         candidato.estado = Reserva.Estado.INVITADO
         candidato.save(update_fields=["estado"])
+        turno = candidato.turno
+        clase_inicio = timezone.make_aware(
+            __import__("datetime").datetime(
+                turno.fecha.year, turno.fecha.month, turno.fecha.day, turno.hora, 0
+            )
+        )
         invitacion = InvitacionCupo.objects.create(
             reserva=candidato,
-            fecha_vencimiento=timezone.now() + timedelta(
-                minutes=settings.INVITACION_LISTA_ESPERA_MINUTOS
-            ),
+            fecha_vencimiento=clase_inicio,
         )
         _enviar_invitacion(invitacion)
         creadas += 1
