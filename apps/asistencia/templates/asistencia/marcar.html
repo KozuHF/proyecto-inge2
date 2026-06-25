@@ -16,20 +16,26 @@
         <div class="flex justify-between"><span class="text-gray-400">Fecha</span><span class="font-semibold">{{ asistencia.reserva.turno.fecha|date:"d/m/Y" }}</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Horario</span><span class="font-semibold">{{ asistencia.reserva.turno.hora|stringformat:"02d" }}:00</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Pago</span>
-          {% if pago_pendiente %}<span class="font-semibold text-amber-600">Pago pendiente (abono)</span>{% else %}<span class="font-semibold text-green-600">Pagado</span>{% endif %}
+          {% if pago_pendiente %}<span class="font-semibold text-amber-600">Señado (pago incompleto)</span>{% else %}<span class="font-semibold text-green-600">Pagado</span>{% endif %}
         </div>
         <div class="flex justify-between"><span class="text-gray-400">Estado</span>
           {% if asistencia.presente %}<span class="font-semibold text-green-600">Ya registrada</span>{% else %}<span class="font-semibold text-amber-600">Pendiente</span>{% endif %}
         </div>
       </div>
 
-      <form method="post" action="{% url 'asistencia:marcar' codigo=codigo %}?origen={{ origen }}">
-        {% csrf_token %}
-        <button type="submit"
-                class="w-full px-5 py-3 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
-          Confirmar asistencia
-        </button>
-      </form>
+      {% if pago_pendiente %}
+        <div class="mb-4 p-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+          Esta clase fue señada pero el pago no está completo. No se puede registrar la asistencia hasta que se abone el total.
+        </div>
+      {% else %}
+        <form method="post" action="{% url 'asistencia:marcar' codigo=codigo %}?origen={{ origen }}">
+          {% csrf_token %}
+          <button type="submit"
+                  class="w-full px-5 py-3 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition">
+            Confirmar asistencia
+          </button>
+        </form>
+      {% endif %}
       {% if origen == "dni" %}
         <a href="{% url 'asistencia:marcar_por_dni' %}" class="block text-center mt-4 text-sm font-semibold text-gray-500 hover:text-gray-700">← Volver al registro por DNI</a>
       {% else %}
