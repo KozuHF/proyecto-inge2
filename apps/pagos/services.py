@@ -257,7 +257,7 @@ def obtener_reserva_pagable(usuario, reserva_id: int) -> Reserva:
     if reserva.estado_pago == Reserva.EstadoPago.PAGADO:
         raise ValidationError(_("Esta reserva ya está pagada."))
 
-    if reserva.es_abonado_mensual:
+    if reserva.es_abonado_mensual and reserva.estado != Reserva.Estado.INVITADO:
         raise ValidationError(
             _("El pago de este turno se gestiona desde el abono mensual.")
         )
