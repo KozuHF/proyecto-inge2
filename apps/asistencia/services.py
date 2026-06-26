@@ -206,17 +206,10 @@ def marcar_asistencia(codigo, empleado) -> ResultadoMarcado:
 
     apertura, cierre = ventana_asistencia(reserva.turno)
     ahora = timezone.now()
-    if ahora < apertura:
+    if ahora < apertura or ahora > cierre:
         return ResultadoMarcado(
             exito=False, estado="fuera_de_ventana", asistencia=asistencia,
-            mensaje=str(_(
-                "Todavía no se puede registrar la asistencia. Se habilita 30 minutos "
-                "antes del inicio de la clase (%(hora)s).") % {"hora": apertura.strftime("%H:%M %d/%m")}),
-        )
-    if ahora > cierre:
-        return ResultadoMarcado(
-            exito=False, estado="fuera_de_ventana", asistencia=asistencia,
-            mensaje=str(_("El horario para registrar la asistencia de esta clase ya finalizó.")),
+            mensaje=str(_("Horario inválido para registrar la asistencia de esta clase.")),
         )
 
     asistencia.presente = True
