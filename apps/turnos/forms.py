@@ -146,7 +146,7 @@ class PasoHoraForm(forms.Form):
                 elif hora in horas_en_espera:
                     label += _(" (Ya estás en lista de espera para esta clase)")
                 elif info["lleno"]:
-                    label += _(" (LLENO – lista de espera: %d)") % info["en_espera"]
+                    label += _(" (LLENO – en espera: %d)") % info["en_espera"]
                 else:
                     label += _(" (%d cupos disponibles)") % info["libres"]
             choices.append((hora, label))
