@@ -10,4 +10,14 @@ urlpatterns = [
     path("reservar/cancelar/", views.cancelar_checkout, name="cancelar_checkout"),
     path("reserva/<int:reserva_id>/", views.pagar_reserva, name="pagar_reserva"),
     path("grupo/<int:grupo_id>/", views.pagar_grupo, name="pagar_grupo"),
+    path(
+        "suspension-abonado/<int:suspension_id>/levantar/",
+        views.levantar_suspension_abonado,
+        name="levantar_suspension_abonado",
+    ),
+    path(
+        "suspension-no-abonado/levantar/",
+        views.levantar_suspension_no_abonado,
+        name="levantar_suspension_no_abonado",
+    ),
 ]

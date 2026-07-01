@@ -48,12 +48,17 @@ def _siguiente_candidato(turno: Turno):
     Primer candidato de la lista de espera del turno: abonados de la actividad
     primero (FIFO por fecha de reserva), luego no abonados (FIFO).
     """
-    espera = list(
-        turno.reservas
-        .filter(estado=Reserva.Estado.EN_ESPERA)
-        .select_related("usuario")
-        .order_by("fecha_reserva")
-    )
+    from . import suspensiones
+
+    espera = [
+        r for r in (
+            turno.reservas
+            .filter(estado=Reserva.Estado.EN_ESPERA, usuario__suspendido=False)
+            .select_related("usuario")
+            .order_by("fecha_reserva")
+        )
+        if suspensiones.suspension_activa_abonado(r.usuario, turno.actividad) is None
+    ]
     if not espera:
         return None
     abonados = [r for r in espera if _es_abonado_para_actividad(r.usuario, turno.actividad)]
@@ -126,7 +131,15 @@ def aceptar(invitacion: InvitacionCupo) -> Reserva:
         )
     if invitacion.estado != InvitacionCupo.Estado.PENDIENTE:
         raise ValidationError(_("Esta invitación ya no está disponible."))
-    return invitacion.reserva
+
+    from . import suspensiones
+
+    reserva = invitacion.reserva
+    if not suspensiones.usuario_puede_reservar_actividad(reserva.usuario, reserva.turno.actividad):
+        raise ValidationError(
+            _("Tu cuenta está suspendida. Contactá al club para más información.")
+        )
+    return reserva
 
 
 @transaction.atomic

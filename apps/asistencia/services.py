@@ -223,24 +223,30 @@ def marcar_asistencia(codigo, empleado) -> ResultadoMarcado:
     )
 
 
-def cancelar_senados_ausentes() -> int:
+def cancelar_individuales_ausentes_impagos() -> int:
     """
-    Cancela las reservas de turno individual SEÑADO cuya clase ya terminó y el
-    cliente no asistió. La seña se retiene — no se emite crédito ni reembolso.
+    Cancela las reservas de turno individual (no abono) PENDIENTE o SEÑADO cuya
+    clase ya terminó y el cliente no asistió. La seña, si existía, se retiene —
+    no se emite crédito ni reembolso. Cada cancelación cuenta como un
+    incumplimiento para la suspensión de no abonados (ver apps.turnos.suspensiones).
     Devuelve la cantidad de reservas canceladas.
     """
+    from apps.turnos import suspensiones
+
     ahora = timezone.now()
     # Hora local para comparar con turno.hora (entero)
     ahora_local = timezone.localtime(ahora)
     hoy = ahora_local.date()
     hora_actual = ahora_local.hour
 
-    # Reservas SEÑADO de turno individual con clase ya finalizada y sin asistencia
+    estados_impagos = [Reserva.EstadoPago.PENDIENTE, Reserva.EstadoPago.SENADO]
+
+    # Reservas individuales impagas/señadas con clase ya finalizada y sin asistencia
     candidatas = (
         Reserva.objects
         .filter(
             estado=Reserva.Estado.CONFIRMADA,
-            estado_pago=Reserva.EstadoPago.SENADO,
+            estado_pago__in=estados_impagos,
             grupo_mensual__isnull=True,
         )
         .filter(
@@ -248,7 +254,7 @@ def cancelar_senados_ausentes() -> int:
             turno__fecha__lt=hoy,
         ) | Reserva.objects.filter(
             estado=Reserva.Estado.CONFIRMADA,
-            estado_pago=Reserva.EstadoPago.SENADO,
+            estado_pago__in=estados_impagos,
             grupo_mensual__isnull=True,
             turno__fecha=hoy,
             turno__hora__lt=hora_actual,
@@ -261,6 +267,7 @@ def cancelar_senados_ausentes() -> int:
     for reserva in candidatas:
         with transaction.atomic():
             reserva.cancelar()
+            suspensiones.verificar_suspension_no_abonado(reserva.usuario)
             n += 1
 
     return n
@@ -272,6 +279,8 @@ def cancelar_abonados_ausentes_impagos() -> int:
     y el cliente no asistió. No hay nada que retener (no pagaron nada).
     Devuelve la cantidad de reservas canceladas.
     """
+    from apps.turnos.penalidad_cancelaciones import registrar_cancelacion_abono_mensual
+
     ahora = timezone.now()
     ahora_local = timezone.localtime(ahora)
     hoy = ahora_local.date()
@@ -292,12 +301,15 @@ def cancelar_abonados_ausentes_impagos() -> int:
             turno__hora__lt=hora_actual,
         )
     )
-    candidatas = candidatas.exclude(asistencia__presente=True).select_related("turno")
+    candidatas = candidatas.exclude(asistencia__presente=True).select_related(
+        "turno", "turno__actividad"
+    )
 
     n = 0
     for reserva in candidatas:
         with transaction.atomic():
             reserva.cancelar()
+            registrar_cancelacion_abono_mensual(reserva)
             n += 1
 
     return n

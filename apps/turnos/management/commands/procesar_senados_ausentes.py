@@ -1,17 +1,17 @@
 from django.core.management.base import BaseCommand
 
-from apps.asistencia.services import cancelar_abonados_ausentes_impagos, cancelar_senados_ausentes
+from apps.asistencia.services import cancelar_abonados_ausentes_impagos, cancelar_individuales_ausentes_impagos
 
 
 class Command(BaseCommand):
-    help = "Cancela reservas SEÑADO e abonos impagos cuya clase ya terminó y el cliente no asistió."
+    help = "Cancela reservas individuales e abonos impagos cuya clase ya terminó y el cliente no asistió."
 
     def handle(self, *args, **options):
-        n1 = cancelar_senados_ausentes()
+        n1 = cancelar_individuales_ausentes_impagos()
         if n1:
-            self.stdout.write(self.style.SUCCESS(f"Reservas SEÑADO canceladas por ausencia: {n1}"))
+            self.stdout.write(self.style.SUCCESS(f"Reservas individuales canceladas por ausencia: {n1}"))
         else:
-            self.stdout.write("No había reservas SEÑADO pendientes de cancelar.")
+            self.stdout.write("No había reservas individuales pendientes de cancelar.")
 
         n2 = cancelar_abonados_ausentes_impagos()
         if n2:

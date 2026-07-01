@@ -666,6 +666,61 @@ class CancelacionAbonoMensual(models.Model):
         return f"{self.usuario} – {self.mes_cancelacion:02d}/{self.anio_cancelacion}"
 
 
+# ── SuspensionAbonado ─────────────────────────────────────────────────────────
+
+class SuspensionAbonado(models.Model):
+    """
+    Suspensión de un abonado en una actividad puntual (no afecta a sus otros
+    deportes). Motivo: no pagó el abono completo al día 11.
+
+    Mientras esté activa, el usuario no puede reservar ni abono mensual ni
+    turnos sueltos de esa actividad. Se levanta pagando `monto_adeudado`
+    (incluye el 5 % de recargo) desde Mi cuenta.
+    """
+
+    class Motivo(models.TextChoices):
+        PLAZO_VENCIDO = "plazo_vencido", _("Abono impago al día 11")
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="suspensiones_abonado",
+        verbose_name=_("Usuario"),
+    )
+    actividad = models.ForeignKey(
+        Actividad,
+        on_delete=models.CASCADE,
+        related_name="suspensiones_abonado",
+        verbose_name=_("Actividad"),
+    )
+    motivo = models.CharField(
+        max_length=20,
+        choices=Motivo.choices,
+        verbose_name=_("Motivo"),
+    )
+    monto_adeudado = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name=_("Monto a pagar para levantar la suspensión"),
+    )
+    activa = models.BooleanField(default=True, verbose_name=_("Activa"))
+    fecha_creacion = models.DateTimeField(auto_now_add=True, verbose_name=_("Fecha de suspensión"))
+    fecha_levantamiento = models.DateTimeField(null=True, blank=True, verbose_name=_("Fecha de levantamiento"))
+
+    class Meta:
+        verbose_name = _("Suspensión de abonado")
+        verbose_name_plural = _("Suspensiones de abonado")
+        ordering = ["-fecha_creacion"]
+
+    def __str__(self):
+        return f"{self.usuario} – {self.actividad} ({self.get_motivo_display()})"
+
+    def levantar(self):
+        self.activa = False
+        self.fecha_levantamiento = timezone.now()
+        self.save(update_fields=["activa", "fecha_levantamiento"])
+
+
 # ── InvitacionCupo ────────────────────────────────────────────────────────────
 
 class InvitacionCupo(models.Model):
