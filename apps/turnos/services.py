@@ -467,14 +467,10 @@ def cancelar_reserva(usuario, reserva_id: int) -> tuple[Reserva, bool]:
     era_abono = reserva.es_abonado_mensual
     era_confirmada = reserva.estado == Reserva.Estado.CONFIRMADA
     era_señada = reserva.estado_pago == Reserva.EstadoPago.SENADO
-    monto = reserva.monto_total
     reserva.cancelar()
 
     if era_abono:
         registrar_cancelacion_abono_mensual(reserva)
-        if era_confirmada:
-            suspensiones.registrar_cancelacion_confirmada(usuario, reserva.turno.actividad, monto)
-            suspensiones.verificar_suspension_por_cancelaciones(usuario, reserva.turno.actividad)
     elif era_confirmada and era_señada:
         suspensiones.verificar_suspension_no_abonado(usuario)
 
@@ -516,15 +512,7 @@ def cancelar_grupo_mensual(usuario, grupo_id: int) -> tuple[GrupoReservaMensual,
     for reserva in reservas_activas:
         registrar_cancelacion_abono_mensual(reserva)
 
-    reservas_confirmadas = [r for r in reservas_activas if r.estado == Reserva.Estado.CONFIRMADA]
-
     grupo.cancelar_todo()
-
-    if reservas_confirmadas:
-        from . import suspensiones
-        for reserva in reservas_confirmadas:
-            suspensiones.registrar_cancelacion_confirmada(usuario, grupo.actividad, reserva.monto_total)
-        suspensiones.verificar_suspension_por_cancelaciones(usuario, grupo.actividad)
 
     creditos_otorgados = creditos_services.otorgar_creditos_por_cancelacion_grupo(
         reservas_con_credito

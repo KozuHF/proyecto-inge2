@@ -666,60 +666,12 @@ class CancelacionAbonoMensual(models.Model):
         return f"{self.usuario} – {self.mes_cancelacion:02d}/{self.anio_cancelacion}"
 
 
-# ── CancelacionAbonoConfirmada ────────────────────────────────────────────────
-
-class CancelacionAbonoConfirmada(models.Model):
-    """
-    Registro de cancelación de una clase de abono que SÍ estaba CONFIRMADA (no
-    en lista de espera ni invitada) al momento de cancelarse. A diferencia de
-    `CancelacionAbonoMensual` (que también cuenta bajas de lista de espera y se
-    usa para la penalización del 20 % de descuento), esta tabla es exclusiva
-    para contar las cancelaciones que disparan `SuspensionAbonado`, guarda el
-    monto de la clase para no depender de la reserva ya cancelada.
-    """
-
-    usuario = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="cancelaciones_abono_confirmadas",
-        verbose_name=_("Usuario"),
-    )
-    actividad = models.ForeignKey(
-        Actividad,
-        on_delete=models.CASCADE,
-        related_name="cancelaciones_abono_confirmadas",
-        verbose_name=_("Actividad"),
-    )
-    monto = models.DecimalField(max_digits=10, decimal_places=2, verbose_name=_("Monto de la clase"))
-    anio_cancelacion = models.PositiveSmallIntegerField(verbose_name=_("Año"))
-    mes_cancelacion = models.PositiveSmallIntegerField(verbose_name=_("Mes"))
-    fecha_registro = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = _("Cancelación de abono confirmada")
-        verbose_name_plural = _("Cancelaciones de abono confirmadas")
-        ordering = ["-fecha_registro"]
-        indexes = [
-            models.Index(
-                fields=["usuario", "actividad", "anio_cancelacion", "mes_cancelacion"],
-                name="cancel_abono_conf_idx",
-            ),
-        ]
-
-    def __str__(self):
-        return f"{self.usuario} – {self.actividad} ({self.mes_cancelacion:02d}/{self.anio_cancelacion})"
-
-
 # ── SuspensionAbonado ─────────────────────────────────────────────────────────
 
 class SuspensionAbonado(models.Model):
     """
     Suspensión de un abonado en una actividad puntual (no afecta a sus otros
-    deportes). Se dispara por dos motivos independientes:
-
-    - PLAZO_VENCIDO: no pagó el abono completo al día 11.
-    - TRES_CANCELADAS: canceló (voluntaria o automáticamente) 3 o más clases
-      de esa actividad en el mismo mes calendario.
+    deportes). Motivo: no pagó el abono completo al día 11.
 
     Mientras esté activa, el usuario no puede reservar ni abono mensual ni
     turnos sueltos de esa actividad. Se levanta pagando `monto_adeudado`
@@ -728,7 +680,6 @@ class SuspensionAbonado(models.Model):
 
     class Motivo(models.TextChoices):
         PLAZO_VENCIDO = "plazo_vencido", _("Abono impago al día 11")
-        TRES_CANCELADAS = "tres_canceladas", _("3 clases canceladas en el mes")
 
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL,

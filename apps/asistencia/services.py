@@ -276,12 +276,9 @@ def cancelar_individuales_ausentes_impagos() -> int:
 def cancelar_abonados_ausentes_impagos() -> int:
     """
     Cancela las reservas de abono mensual PENDIENTE de pago cuya clase ya terminó
-    y el cliente no asistió. No hay nada que retener (no pagaron nada). Cada
-    cancelación cuenta para la suspensión por deporte del abonado (ver
-    apps.turnos.suspensiones).
+    y el cliente no asistió. No hay nada que retener (no pagaron nada).
     Devuelve la cantidad de reservas canceladas.
     """
-    from apps.turnos import suspensiones
     from apps.turnos.penalidad_cancelaciones import registrar_cancelacion_abono_mensual
 
     ahora = timezone.now()
@@ -311,11 +308,8 @@ def cancelar_abonados_ausentes_impagos() -> int:
     n = 0
     for reserva in candidatas:
         with transaction.atomic():
-            monto = reserva.monto_total
             reserva.cancelar()
             registrar_cancelacion_abono_mensual(reserva)
-            suspensiones.registrar_cancelacion_confirmada(reserva.usuario, reserva.turno.actividad, monto)
-            suspensiones.verificar_suspension_por_cancelaciones(reserva.usuario, reserva.turno.actividad)
             n += 1
 
     return n

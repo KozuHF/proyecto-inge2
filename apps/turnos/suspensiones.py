@@ -4,23 +4,14 @@ Suspensiones de clientes.
 Hay dos mecanismos independientes:
 
 - Abonados: se suspenden POR DEPORTE (no afecta a sus otros abonos ni a
-  turnos sueltos de otras actividades). Dos motivos posibles, conviven:
-    1. No pagar el abono completo al día 11 (`SuspensionAbonado.Motivo.PLAZO_VENCIDO`).
-    2. Acumular 3 o más clases CONFIRMADAS canceladas (voluntaria o
-       automáticamente) de ese deporte en el mismo mes calendario
-       (`...TRES_CANCELADAS`).
-  Se levanta pagando la deuda + 5 % de recargo.
+  turnos sueltos de otras actividades) si no pagan el abono completo al día
+  11 (`SuspensionAbonado.Motivo.PLAZO_VENCIDO`). Se levanta pagando las clases
+  del 1 al 10 que quedaron impagas + 5 % de recargo.
 
 - No abonados: se suspenden GLOBALMENTE (`Usuario.suspendido`) al acumular 3
   clases sueltas SEÑADAS y nunca completadas en el mismo mes, sin importar el
   deporte. No pueden reservar turnos sueltos de ningún deporte hasta pagar lo
-  adeudado + 5 % de recargo.
-
-Importante: en ambos casos solo cuentan las cancelaciones de clases que
-estaban efectivamente CONFIRMADAS (con cupo asegurado) al momento de
-cancelarse. Bajarse de una lista de espera antes de que se confirme el cupo,
-o dejar vencer/rechazar una invitación de cupo liberado, NO cuenta para
-ningún contador — nunca hubo una clase realmente comprometida.
+  adeudado (el restante de esas 3 clases) + 5 % de recargo.
 
 Los contadores son mensuales por naturaleza (se cuenta solo lo del mes en
 curso): un usuario que ya está suspendido simplemente no vuelve a ser
@@ -32,44 +23,13 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
-from .models import CancelacionAbonoConfirmada, Reserva, SuspensionAbonado
+from .models import Reserva, SuspensionAbonado
 
 RECARGO_LEVANTAMIENTO = Decimal("1.05")
-UMBRAL_CANCELACIONES_ABONADO = 3
 UMBRAL_INCUMPLIMIENTOS_NO_ABONADO = 3
 
 
 # ── Conteo ─────────────────────────────────────────────────────────────────────
-
-def contar_cancelaciones_abono_actividad(usuario, actividad, anio: int, mes: int) -> int:
-    """
-    Cuenta solo cancelaciones de clases que estaban CONFIRMADAS (no bajas de
-    lista de espera ni invitaciones vencidas/rechazadas — ver
-    `registrar_cancelacion_confirmada`).
-    """
-    return CancelacionAbonoConfirmada.objects.filter(
-        usuario=usuario,
-        actividad=actividad,
-        anio_cancelacion=anio,
-        mes_cancelacion=mes,
-    ).count()
-
-
-def registrar_cancelacion_confirmada(usuario, actividad, monto: Decimal) -> None:
-    """
-    Registrar solo cuando la reserva que se cancela estaba CONFIRMADA en el
-    momento de cancelarse (llamar con el estado capturado ANTES de invocar
-    `reserva.cancelar()`, porque ese método siempre deja `estado=CANCELADA`).
-    """
-    ahora = timezone.localtime(timezone.now())
-    CancelacionAbonoConfirmada.objects.create(
-        usuario=usuario,
-        actividad=actividad,
-        monto=monto,
-        anio_cancelacion=ahora.year,
-        mes_cancelacion=ahora.month,
-    )
-
 
 def contar_incumplimientos_no_abonado(usuario, anio: int, mes: int) -> int:
     """
@@ -110,31 +70,6 @@ def suspender_abonado(usuario, actividad, motivo: str, monto_adeudado: Decimal) 
         motivo=motivo,
         monto_adeudado=(monto_adeudado * RECARGO_LEVANTAMIENTO).quantize(Decimal("0.01")),
     )
-
-
-def verificar_suspension_por_cancelaciones(usuario, actividad) -> SuspensionAbonado | None:
-    """
-    Llamar después de registrar la cancelación de una clase de abono. Si el
-    usuario llegó al umbral de cancelaciones de ese deporte en el mes, lo
-    suspende (si no lo estaba ya).
-    """
-    ahora = timezone.localtime(timezone.now())
-    cantidad = contar_cancelaciones_abono_actividad(usuario, actividad, ahora.year, ahora.month)
-    if cantidad < UMBRAL_CANCELACIONES_ABONADO:
-        return None
-
-    ultimas = (
-        CancelacionAbonoConfirmada.objects
-        .filter(
-            usuario=usuario,
-            actividad=actividad,
-            anio_cancelacion=ahora.year,
-            mes_cancelacion=ahora.month,
-        )
-        .order_by("-fecha_registro")[:UMBRAL_CANCELACIONES_ABONADO]
-    )
-    monto = sum((c.monto for c in ultimas), Decimal("0"))
-    return suspender_abonado(usuario, actividad, SuspensionAbonado.Motivo.TRES_CANCELADAS, monto)
 
 
 def verificar_suspension_no_abonado(usuario) -> bool:
