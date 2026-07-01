@@ -18,6 +18,7 @@ from apps.creditos import services as creditos_services
 from apps.creditos.services import ContextoPagoCreditos
 from apps.turnos import notificaciones
 from apps.turnos import services as turnos_services
+from apps.turnos import suspensiones as turnos_suspensiones
 from apps.turnos.abono_mensual import permite_pagar_mas_tarde
 from apps.turnos.models import (
     GrupoReservaMensual,
@@ -426,7 +427,7 @@ def procesar_pago_y_reservar(
     Si el pago falla, no se crea ningún turno reservado.
     """
     datos = datos_desde_wizard(wizard, usuario)
-    if not turnos_services.usuario_puede_reservar(usuario):
+    if not turnos_suspensiones.usuario_puede_reservar_actividad(usuario, datos.actividad):
         raise ValidationError(_("Tu cuenta está suspendida. No podés realizar reservas."))
     if datos.modo == MODO_VARIOS_TURNOS and tipo_pago == TIPO_SENA:
         raise ValidationError(_("Los abonos mensuales solo admiten pago total."))
@@ -535,7 +536,7 @@ def reservar_desde_wizard_sin_pago(usuario, wizard: dict) -> GrupoReservaMensual
         raise ValidationError(_("Esta opción solo está disponible para abonos mensuales."))
     if not datos.permite_pagar_mas_tarde:
         raise ValidationError(_("Debés abonar el abono para confirmar la reserva."))
-    if not turnos_services.usuario_puede_reservar(usuario):
+    if not turnos_suspensiones.usuario_puede_reservar_actividad(usuario, datos.actividad):
         raise ValidationError(_("Tu cuenta está suspendida. No podés realizar reservas."))
 
     grupo = turnos_services.reservar_varios_turnos(
@@ -718,4 +719,39 @@ def procesar_pago_grupo(
         mensaje=mensaje,
         reserva=reserva_ref,
         reservas_creadas=len(reservas),
+    )
+
+
+# ── Levantamiento de suspensión ────────────────────────────────────────────────
+
+@transaction.atomic
+def procesar_pago_levantamiento_suspension(
+    usuario, monto: Decimal, numero_tarjeta: str, cvv: str
+) -> ResultadoPago:
+    """
+    Cobra `monto` (ya incluye el 5 % de recargo) para levantar una suspensión,
+    ya sea de abonado (por deporte) o de no abonado (global). No toca ninguna
+    reserva ni suspensión: el llamador decide qué levantar si el pago sale ok.
+    """
+    ultimos = ultimos_4_digitos(numero_tarjeta)
+    resultado = _validar_tarjeta(
+        numero_tarjeta, ultimos, monto, TIPO_TOTAL, usuario, reserva=None, cvv=cvv
+    )
+    if not resultado.exito:
+        return resultado
+
+    referencia = Pago.generar_referencia()
+    pago = Pago.objects.create(
+        reserva=None,
+        usuario=usuario,
+        monto=monto,
+        estado=Pago.Estado.APROBADO,
+        tipo_cobro=TIPO_TOTAL,
+        referencia=referencia,
+        ultimos_4=ultimos,
+    )
+    return ResultadoPago(
+        exito=True,
+        pago=pago,
+        mensaje=_("Pago aprobado. Referencia: %(ref)s") % {"ref": referencia},
     )

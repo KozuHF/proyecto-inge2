@@ -378,6 +378,11 @@ def anotar_en_lista_espera(usuario, actividad: Actividad, fecha: date, hora: int
     Anota al usuario en la lista de espera de un turno lleno, sin cobro. Solo se
     paga si más adelante se libera un cupo, se lo invita y acepta.
     """
+    from . import suspensiones
+
+    if not suspensiones.usuario_puede_reservar_actividad(usuario, actividad):
+        raise ValidationError(_("Tu cuenta está suspendida. No podés realizar reservas."))
+
     _validar_no_pasado(fecha)
     _validar_dentro_de_limite(fecha)
     _validar_dia_habil(fecha)
@@ -455,14 +460,23 @@ def cancelar_reserva(usuario, reserva_id: int) -> tuple[Reserva, bool]:
     except Reserva.DoesNotExist:
         raise ValidationError(_("Reserva no encontrada."))
 
+    from . import suspensiones
     from .penalidad_cancelaciones import registrar_cancelacion_abono_mensual
 
     otorgar_credito = creditos_services.puede_otorgar_credito_cancelacion(reserva)
     era_abono = reserva.es_abonado_mensual
+    era_confirmada = reserva.estado == Reserva.Estado.CONFIRMADA
+    era_señada = reserva.estado_pago == Reserva.EstadoPago.SENADO
+    monto = reserva.monto_total
     reserva.cancelar()
 
     if era_abono:
         registrar_cancelacion_abono_mensual(reserva)
+        if era_confirmada:
+            suspensiones.registrar_cancelacion_confirmada(usuario, reserva.turno.actividad, monto)
+            suspensiones.verificar_suspension_por_cancelaciones(usuario, reserva.turno.actividad)
+    elif era_confirmada and era_señada:
+        suspensiones.verificar_suspension_no_abonado(usuario)
 
     if otorgar_credito:
         creditos_services.otorgar_credito_cancelacion(reserva)
@@ -502,7 +516,15 @@ def cancelar_grupo_mensual(usuario, grupo_id: int) -> tuple[GrupoReservaMensual,
     for reserva in reservas_activas:
         registrar_cancelacion_abono_mensual(reserva)
 
+    reservas_confirmadas = [r for r in reservas_activas if r.estado == Reserva.Estado.CONFIRMADA]
+
     grupo.cancelar_todo()
+
+    if reservas_confirmadas:
+        from . import suspensiones
+        for reserva in reservas_confirmadas:
+            suspensiones.registrar_cancelacion_confirmada(usuario, grupo.actividad, reserva.monto_total)
+        suspensiones.verificar_suspension_por_cancelaciones(usuario, grupo.actividad)
 
     creditos_otorgados = creditos_services.otorgar_creditos_por_cancelacion_grupo(
         reservas_con_credito
@@ -598,19 +620,30 @@ def obtener_horas_disponibles(actividad, fecha) -> list[dict]:
 @transaction.atomic
 def aplicar_sancion_plazo_vencido(grupo: GrupoReservaMensual) -> bool:
     """
-    Cancela el abono y suspende al usuario si venció el plazo del día 11.
-    Devuelve True si se aplicó la sanción.
+    Cancela el abono y suspende al usuario de esa actividad si venció el
+    plazo del día 11. Devuelve True si se aplicó la sanción.
     """
+    from decimal import Decimal
+
+    from . import suspensiones
+    from .models import SuspensionAbonado
+
     if not plazo_pago_vencido(grupo):
         return False
 
     if grupo.cantidad_turnos_activos:
+        # Deuda de las clases del 1 al 10 que no se llegaron a pagar.
+        monto_adeudado = sum(
+            (
+                r.monto_total for r in grupo.reservas_activas().select_related("turno")
+                if r.turno.fecha.day <= 10
+            ),
+            Decimal("0"),
+        )
         grupo.cancelar_todo()
-
-    usuario = grupo.usuario
-    if not usuario.suspendido:
-        usuario.suspendido = True
-        usuario.save(update_fields=["suspendido"])
+        suspensiones.suspender_abonado(
+            grupo.usuario, grupo.actividad, SuspensionAbonado.Motivo.PLAZO_VENCIDO, monto_adeudado
+        )
 
     return True
 

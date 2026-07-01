@@ -115,12 +115,18 @@ def marcar(request, codigo):
     GET  → pantalla de confirmación con datos del cliente y la clase.
     POST → registra la asistencia y muestra el resultado.
     """
-    asistencia = (
-        Asistencia.objects
-        .select_related("reserva", "reserva__turno", "reserva__turno__actividad", "reserva__usuario")
-        .filter(codigo=codigo)
-        .first()
-    )
+    try:
+        asistencia = (
+            Asistencia.objects
+            .select_related("reserva", "reserva__turno", "reserva__turno__actividad", "reserva__usuario")
+            .filter(codigo=codigo[:36])
+            .first()
+        )
+    except Exception:
+        asistencia = None
+
+    if asistencia is None:
+        return render(request, "asistencia/qr_invalido.html")
 
     if request.method == "POST":
         resultado = services.marcar_asistencia(codigo, request.user)
@@ -140,6 +146,6 @@ def marcar(request, codigo):
     return render(request, "asistencia/marcar.html", {
         "asistencia": asistencia,
         "codigo": codigo,
-        "pago_pendiente": services.pago_pendiente(asistencia.reserva) if asistencia else False,
+        "pago_pendiente": services.pago_pendiente(asistencia.reserva),
         "origen": request.GET.get("origen", "qr"),
     })

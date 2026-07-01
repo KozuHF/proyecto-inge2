@@ -227,14 +227,17 @@ def editar_usuario(request, pk):
     creditos_resumen = None
     tarjeta_guardada = None
     aviso_penalidad = None
+    suspensiones_abonado = None
     if es_propio_perfil and usuario.rol == Roles.USER:
         from apps.creditos.services import resumen_creditos_usuario
         from apps.pagos import tarjetas as tarjetas_svc
+        from apps.turnos import suspensiones as turnos_suspensiones
         from apps.turnos.penalidad_cancelaciones import aviso_penalidad_en_cuenta
 
         creditos_resumen = resumen_creditos_usuario(usuario)
         tarjeta_guardada = tarjetas_svc.obtener_tarjeta_guardada(usuario)
         aviso_penalidad = aviso_penalidad_en_cuenta(usuario)
+        suspensiones_abonado = turnos_suspensiones.suspensiones_activas_de(usuario)
 
     return render(request, "accounts/editar.html", {
         "form": form,
@@ -243,6 +246,7 @@ def editar_usuario(request, pk):
         "creditos_resumen": creditos_resumen,
         "tarjeta_guardada": tarjeta_guardada,
         "aviso_penalidad": aviso_penalidad,
+        "suspensiones_abonado": suspensiones_abonado,
         "is_panel": not es_propio_perfil,
     })
 
@@ -319,6 +323,78 @@ def eliminar_cuenta(request):
         return redirect("home")
 
     return render(request, "accounts/eliminar_cuenta.html")
+
+
+@login_required
+@rol_requerido(["admin", "employee"])
+def eliminar_usuario_por_dni(request):
+    """
+    Sección para eliminar un usuario buscándolo por DNI.
+
+    GET             → formulario de búsqueda (vacío).
+    POST buscar     → muestra el usuario encontrado con la confirmación (o error si no procede).
+    POST confirmar  → ejecuta el borrado permanente.
+
+    Reglas:
+    - Nadie puede eliminarse a sí mismo.
+    - Empleados solo pueden eliminar clientes (rol USER).
+    - Admins pueden eliminar clientes y empleados, pero no a otro admin.
+    """
+    operador = request.user
+    usuario = None
+    error = None
+    buscado = False
+
+    accion = request.POST.get("accion")
+
+    if request.method == "POST" and accion == "confirmar":
+        pk = request.POST.get("usuario_pk")
+        usuario = get_object_or_404(UsuarioRepository.obtener_todos(), pk=pk)
+        error = _verificar_eliminacion(operador, usuario)
+        if error:
+            messages.error(request, error)
+        else:
+            email = usuario.email
+            uid = usuario.pk
+            turnos_cancelados = services.eliminar_cuenta(usuario)
+            logger.warning(
+                "Cuenta eliminada por %s: %s (ID=%s) – %d turnos cancelados",
+                operador.email, email, uid, turnos_cancelados,
+            )
+            messages.success(
+                request,
+                _("La cuenta de %(email)s fue eliminada. %(n)d turno(s) próximo(s) cancelado(s).")
+                % {"email": email, "n": turnos_cancelados},
+            )
+            return redirect("accounts:eliminar_por_dni")
+        usuario = None
+
+    elif request.method == "POST" and accion == "buscar":
+        buscado = True
+        dni = request.POST.get("nro_documento", "").strip()
+        if dni:
+            usuario = UsuarioRepository.obtener_por_documento(dni)
+            if usuario is None:
+                error = _("No se encontró ningún usuario con ese DNI.")
+            else:
+                error = _verificar_eliminacion(operador, usuario)
+
+    return render(request, "accounts/eliminar_por_dni.html", {
+        "usuario": usuario,
+        "error": error,
+        "buscado": buscado,
+    })
+
+
+def _verificar_eliminacion(operador, usuario):
+    """Devuelve un mensaje de error si la eliminación no está permitida, o None si procede."""
+    if usuario.pk == operador.pk:
+        return _("No podés eliminar tu propia cuenta.")
+    if usuario.rol == Roles.ADMIN:
+        return _("No se pueden eliminar cuentas de administrador.")
+    if operador.rol == Roles.EMPLOYEE and usuario.rol != Roles.USER:
+        return _("Los empleados solo pueden eliminar cuentas de clientes.")
+    return None
 
 
 @rol_requerido("admin")

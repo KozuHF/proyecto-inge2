@@ -3,7 +3,7 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
@@ -304,3 +304,71 @@ def cancelar_checkout(request):
     _wizard_clear(request)
     messages.info(request, "Reserva cancelada. No se realizó ningún cargo.")
     return redirect("turnos:paso_tipo_abono")
+
+
+# ── Levantamiento de suspensión ────────────────────────────────────────────────
+
+def _procesar_form_levantamiento(request, monto):
+    from .forms import PagoSimpleForm
+
+    tarjeta_guardada = tarjetas.obtener_tarjeta_guardada(request.user)
+    form = PagoSimpleForm(request.POST or None, tarjeta_guardada=tarjeta_guardada)
+    resultado = None
+    if request.method == "POST" and form.is_valid():
+        pan, cvv = form.datos_tarjeta_para_pago(request.user)
+        resultado = services.procesar_pago_levantamiento_suspension(
+            request.user, monto, pan, cvv
+        )
+    return form, tarjeta_guardada, resultado
+
+
+@login_required
+def levantar_suspension_abonado(request, suspension_id):
+    from apps.turnos import suspensiones
+    from apps.turnos.models import SuspensionAbonado
+
+    suspension = get_object_or_404(
+        SuspensionAbonado.objects.select_related("actividad"),
+        pk=suspension_id, usuario=request.user, activa=True,
+    )
+    form, tarjeta_guardada, resultado = _procesar_form_levantamiento(request, suspension.monto_adeudado)
+
+    if resultado and resultado.exito:
+        suspensiones.levantar_suspension_abonado(suspension)
+        messages.success(request, _("Suspensión levantada. ") + resultado.mensaje)
+        return redirect("accounts:editar", pk=request.user.pk)
+    if resultado and not resultado.exito:
+        messages.error(request, resultado.mensaje)
+
+    return render(request, "pagos/levantar_suspension.html", {
+        "form": form,
+        "tarjeta_guardada": tarjeta_guardada,
+        "monto": suspension.monto_adeudado,
+        "titulo": _("Levantar suspensión — %(actividad)s") % {"actividad": suspension.actividad},
+    })
+
+
+@login_required
+def levantar_suspension_no_abonado(request):
+    from apps.turnos import suspensiones
+
+    if not request.user.suspendido:
+        messages.info(request, _("Tu cuenta no está suspendida."))
+        return redirect("accounts:editar", pk=request.user.pk)
+
+    monto = request.user.monto_adeudado_suspension or 0
+    form, tarjeta_guardada, resultado = _procesar_form_levantamiento(request, monto)
+
+    if resultado and resultado.exito:
+        suspensiones.levantar_suspension_no_abonado(request.user)
+        messages.success(request, _("Suspensión levantada. ") + resultado.mensaje)
+        return redirect("accounts:editar", pk=request.user.pk)
+    if resultado and not resultado.exito:
+        messages.error(request, resultado.mensaje)
+
+    return render(request, "pagos/levantar_suspension.html", {
+        "form": form,
+        "tarjeta_guardada": tarjeta_guardada,
+        "monto": monto,
+        "titulo": _("Levantar suspensión de turnos sueltos"),
+    })

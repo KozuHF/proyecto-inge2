@@ -1,0 +1,21 @@
+{% extends "accounts/panel_base.html" %}
+
+{% block title %}QR inválido — Club360{% endblock title %}
+
+{% block panel_content %}
+<div class="max-w-md mx-auto">
+  <div class="bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 rounded-2xl p-10 shadow-sm text-center">
+    <div class="w-16 h-16 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center mx-auto mb-5">
+      <svg class="w-8 h-8 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </div>
+    <h1 class="text-2xl font-extrabold text-gray-900 dark:text-white mb-2">QR inválido</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-8">El código escaneado no corresponde a ninguna asistencia registrada.</p>
+    <a href="{% url 'asistencia:escanear' %}"
+       class="inline-block px-6 py-2.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition">
+      ← Volver al escáner
+    </a>
+  </div>
+</div>
+{% endblock panel_content %}

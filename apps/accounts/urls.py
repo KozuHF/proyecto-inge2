@@ -34,6 +34,7 @@ urlpatterns = [
     path("buscar/",                   views.busqueda_global,   name="busqueda"),
     path("<int:pk>/",                 views.detalle_usuario,   name="detalle"),
     path("<int:pk>/editar/",          views.editar_usuario,    name="editar"),
+    path("eliminar-usuario/",          views.eliminar_usuario_por_dni, name="eliminar_por_dni"),
     path("<int:pk>/desactivar/",      views.desactivar_usuario, name="desactivar"),
     path("<int:pk>/activar/",         views.activar_usuario,   name="activar"),
     path("cambiar-password/",         views.cambiar_password,  name="cambiar_password"),

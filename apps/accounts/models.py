@@ -131,7 +131,17 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     suspendido = models.BooleanField(
         default=False,
         verbose_name=_("Suspendido"),
-        help_text=_("Suspensión por incumplimiento de plazos de abono mensual u otras sanciones."),
+        help_text=_(
+            "Suspensión global como no abonado por incumplir el pago de 3 clases "
+            "sueltas en el mismo mes. No permite reservar turnos sueltos de ningún deporte."
+        ),
+    )
+    monto_adeudado_suspension = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name=_("Monto a pagar para levantar la suspensión"),
     )
 
     # Campos requeridos por Django auth

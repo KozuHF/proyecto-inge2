@@ -33,9 +33,32 @@
 
             {% if es_propio_perfil and usuario.suspendido %}
             <div class="mb-6 p-4 text-sm font-semibold text-red-900 bg-red-100 border-2 border-red-500 rounded-lg" role="alert">
-                Tu cuenta está suspendida por incumplimiento de las condiciones de pago de un abono mensual.
-                No podés realizar nuevas reservas hasta regularizar la situación con el club.
+                <p class="mb-2">
+                    Tu cuenta está suspendida para reservar turnos sueltos (cualquier deporte) por incumplir
+                    el pago de 3 clases en el mismo mes.
+                </p>
+                <p class="mb-3">Para levantarla, pagá ${{ usuario.monto_adeudado_suspension }} (incluye 5 % de recargo).</p>
+                <a href="{% url 'pagos:levantar_suspension_no_abonado' %}"
+                   class="inline-block px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition">
+                    Solicitar levantamiento
+                </a>
             </div>
+            {% endif %}
+
+            {% if es_propio_perfil and suspensiones_abonado %}
+            {% for suspension in suspensiones_abonado %}
+            <div class="mb-6 p-4 text-sm font-semibold text-red-900 bg-red-100 border-2 border-red-500 rounded-lg" role="alert">
+                <p class="mb-2">
+                    Tu abono de {{ suspension.actividad }} está suspendido
+                    ({{ suspension.get_motivo_display|lower }}). No podés reservar abono ni turnos sueltos de ese deporte.
+                </p>
+                <p class="mb-3">Para levantarla, pagá ${{ suspension.monto_adeudado }} (incluye 5 % de recargo).</p>
+                <a href="{% url 'pagos:levantar_suspension_abonado' suspension.pk %}"
+                   class="inline-block px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition">
+                    Solicitar levantamiento
+                </a>
+            </div>
+            {% endfor %}
             {% endif %}
 
             {% if es_propio_perfil and aviso_penalidad %}
