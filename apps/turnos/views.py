@@ -25,6 +25,9 @@ from apps.accounts.decorators import rol_requerido
 
 from apps.actividades.models import Actividad
 from .forms import (
+    AdminCancelarClaseActividadForm,
+    AdminCancelarClaseFechaForm,
+    AdminCancelarClaseHoraForm,
     PasoActividadForm,
     PasoDiaSemanaForm,
     PasoFechaForm,
@@ -39,10 +42,12 @@ from .forms import (
 from .models import GrupoReservaMensual, HorarioDisponible, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, Reserva, Turno
 from .abono_mensual import monto_total_desde_fechas
 from . import services
+from . import cancelacion_clase
 
 logger = logging.getLogger(__name__)
 
 _WIZARD_KEY = "wizard_reserva"
+_WIZARD_CANCELAR_CLASE = "wizard_cancelar_clase"
 
 
 def _wizard_get(request) -> dict:
@@ -56,6 +61,19 @@ def _wizard_set(request, data: dict):
 
 def _wizard_clear(request):
     request.session.pop(_WIZARD_KEY, None)
+
+
+def _wizard_cancelar_get(request) -> dict:
+    return request.session.get(_WIZARD_CANCELAR_CLASE, {})
+
+
+def _wizard_cancelar_set(request, data: dict):
+    request.session[_WIZARD_CANCELAR_CLASE] = data
+    request.session.modified = True
+
+
+def _wizard_cancelar_clear(request):
+    request.session.pop(_WIZARD_CANCELAR_CLASE, None)
 
 
 def _requiere_modo(wizard: dict):
@@ -1261,7 +1279,9 @@ def eliminar_horario_disponible(request, pk):
                 monto = reserva.precio_abonado or 0
                 reserva.estado = Reserva.Estado.CANCELADA
                 reserva.save(update_fields=["estado"])
-                enviar_aviso_cancelacion_clase(reserva, monto)
+                enviar_aviso_cancelacion_clase_por_club(
+                    reserva, "reembolso_sena", monto_reembolso=monto
+                )
 
             # Cancelar el resto (PENDIENTE)
             for reserva in reservas_activas:
@@ -1286,3 +1306,154 @@ def eliminar_horario_disponible(request, pk):
         "reembolsos_pendientes": reembolsos_pendientes,
         "total_reservas": len(reservas_activas),
     })
+
+
+# ── Cancelación de clase puntual (admin) ──────────────────────────────────────
+
+
+def _horas_cancelacion_clase(actividad, fecha):
+    horas = services.obtener_horas_disponibles(actividad, fecha)
+    if fecha == timezone.now().date():
+        hora_actual = timezone.now().hour
+        horas = [h for h in horas if h["hora"] > hora_actual]
+    return horas
+
+
+def _datos_clase_desde_wizard_cancelar(request, wizard: dict):
+    actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
+    fecha = date_type.fromisoformat(wizard["fecha"])
+    hora = int(wizard["hora"])
+    cancelacion_clase.validar_fecha_hora_futura(fecha, hora)
+    turno = cancelacion_clase.buscar_turno_clase(actividad, fecha, hora)
+    return actividad, fecha, hora, turno
+
+
+@login_required
+@rol_requerido("admin")
+def cancelar_clase_paso_actividad(request):
+    _wizard_cancelar_clear(request)
+    form = AdminCancelarClaseActividadForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        _wizard_cancelar_set(request, {"actividad_id": form.cleaned_data["actividad"].pk})
+        return redirect("cancelar_clase_fecha")
+    return render(request, "turnos/cancelar_clase_paso_actividad.html", {"form": form, "paso": 1})
+
+
+@login_required
+@rol_requerido("admin")
+def cancelar_clase_paso_fecha(request):
+    wizard = _wizard_cancelar_get(request)
+    if "actividad_id" not in wizard:
+        return redirect("cancelar_clase_actividad")
+
+    form = AdminCancelarClaseFechaForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        wizard["fecha"] = form.cleaned_data["fecha"].isoformat()
+        _wizard_cancelar_set(request, wizard)
+        return redirect("cancelar_clase_hora")
+
+    return render(
+        request,
+        "turnos/cancelar_clase_paso_fecha.html",
+        {
+            "form": form,
+            "paso": 2,
+            "actividad": get_object_or_404(Actividad, pk=wizard["actividad_id"]),
+        },
+    )
+
+
+@login_required
+@rol_requerido("admin")
+def cancelar_clase_paso_hora(request):
+    wizard = _wizard_cancelar_get(request)
+    if "actividad_id" not in wizard or "fecha" not in wizard:
+        return redirect("cancelar_clase_actividad")
+
+    actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
+    fecha = date_type.fromisoformat(wizard["fecha"])
+    horas_info = _horas_cancelacion_clase(actividad, fecha)
+
+    if not horas_info:
+        return render(
+            request,
+            "turnos/cancelar_clase_revisar.html",
+            {"sin_clase": True, "sin_horarios": True, "actividad": actividad, "fecha": fecha},
+        )
+
+    form = AdminCancelarClaseHoraForm(request.POST or None, horas_info=horas_info, fecha=fecha)
+    if request.method == "POST" and form.is_valid():
+        wizard["hora"] = form.cleaned_data["hora"]
+        _wizard_cancelar_set(request, wizard)
+        return redirect("cancelar_clase_revisar")
+
+    return render(
+        request,
+        "turnos/cancelar_clase_paso_hora.html",
+        {"form": form, "paso": 3, "actividad": actividad, "fecha": fecha},
+    )
+
+
+@login_required
+@rol_requerido("admin")
+def cancelar_clase_revisar(request):
+    wizard = _wizard_cancelar_get(request)
+    if not all(k in wizard for k in ("actividad_id", "fecha", "hora")):
+        return redirect("cancelar_clase_actividad")
+
+    actividad, fecha, hora, turno = _datos_clase_desde_wizard_cancelar(request, wizard)
+    sin_clase = turno is None
+    impactos = cancelacion_clase.analizar_cancelacion(turno) if turno else []
+
+    return render(
+        request,
+        "turnos/cancelar_clase_revisar.html",
+        {
+            "sin_clase": sin_clase,
+            "actividad": actividad,
+            "fecha": fecha,
+            "hora": hora,
+            "turno": turno,
+            "impactos": impactos,
+            "paso": 4,
+        },
+    )
+
+
+@login_required
+@rol_requerido("admin")
+def cancelar_clase_confirmar(request):
+    wizard = _wizard_cancelar_get(request)
+    if not all(k in wizard for k in ("actividad_id", "fecha", "hora")):
+        return redirect("cancelar_clase_actividad")
+
+    actividad, fecha, hora, turno = _datos_clase_desde_wizard_cancelar(request, wizard)
+    if turno is None:
+        messages.error(
+            request,
+            _(
+                "No se encontró ninguna clase para %(actividad)s el %(fecha)s a las %(hora)02d:00."
+            )
+            % {"actividad": actividad, "fecha": fecha.strftime("%d/%m/%Y"), "hora": hora},
+        )
+        return redirect("cancelar_clase_revisar")
+
+    impactos = cancelacion_clase.analizar_cancelacion(turno)
+
+    if request.method == "POST":
+        cancelacion_clase.ejecutar_cancelacion_clase(turno)
+        _wizard_cancelar_clear(request)
+        messages.success(
+            request,
+            _(
+                "La clase del %(fecha)s a las %(hora)02d:00 fue cancelada. Se notificó a %(n)d persona(s)."
+            )
+            % {"fecha": fecha.strftime("%d/%m/%Y"), "hora": hora, "n": len(impactos)},
+        )
+        return redirect("panel_turnos")
+
+    return render(
+        request,
+        "turnos/cancelar_clase_confirmar.html",
+        {"actividad": actividad, "fecha": fecha, "hora": hora, "impactos": impactos, "paso": 5},
+    )

@@ -1,0 +1,40 @@
+{% extends "accounts/panel_base.html" %}
+{% load i18n %}
+
+{% block title %}Cancelar clase — Horario{% endblock %}
+
+{% block panel_content %}
+<div class="max-w-lg mx-auto">
+  <nav class="text-sm text-gray-400 mb-6">
+    <a href="{% url 'panel_turnos' %}" class="hover:text-gray-600">Turnos</a>
+    <span class="mx-2">/</span>
+    <span class="text-gray-600 font-medium">Cancelar clase</span>
+  </nav>
+
+  <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm p-8">
+    <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">Paso {{ paso }} de 5</p>
+    <h1 class="text-2xl font-extrabold text-gray-900 dark:text-white mb-2">Horario de la clase</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+      {{ actividad }} · {{ fecha|date:"d/m/Y" }}
+    </p>
+
+    <form method="post" class="space-y-3">
+      {% csrf_token %}
+      {% for radio in form.hora %}
+        <label class="flex items-center gap-3 p-4 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition">
+          {{ radio.tag }}
+          <span class="font-medium text-gray-800 dark:text-gray-100">{{ radio.choice_label }}</span>
+        </label>
+      {% endfor %}
+      {% if form.hora.errors %}
+        <p class="text-sm text-red-600">{{ form.hora.errors.0 }}</p>
+      {% endif %}
+      <div class="flex gap-3 pt-2">
+        <a href="{% url 'cancelar_clase_fecha' %}" class="flex-1 text-center border border-gray-300 text-gray-700 font-semibold rounded-lg text-sm px-5 py-3 hover:bg-gray-50 transition">← Volver</a>
+        <button type="submit" class="flex-1 text-white bg-red-600 hover:bg-red-700 font-semibold rounded-lg text-sm px-5 py-3 transition">Siguiente →</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock panel_content %}
+

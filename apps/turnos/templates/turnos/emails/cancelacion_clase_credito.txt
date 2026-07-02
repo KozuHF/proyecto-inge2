@@ -1,9 +1,0 @@
-Hola {{ usuario.nombre }},
-
-Te informamos que la clase de {{ actividad }} del {{ dia_nombre }} {{ fecha }} a las {{ hora|stringformat:"02d" }}:00 fue cancelada por el club.
-
-Como ya tenías esa clase pagada, te otorgamos un crédito gratis para una clase de {{ actividad }}, válido hasta el {{ fecha_vencimiento }}.
-
-Lamentamos los inconvenientes.
-
-— Equipo Club360
