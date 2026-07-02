@@ -208,6 +208,9 @@ class TurnoForm(forms.ModelForm):
             precio_base = self.instance.actividad.precio_turno
             self.fields["precio_override"].help_text = _(
                 "Dejar vacío para mantener el precio actual ($%(precio)s)."
+<<<<<<< Updated upstream
+            ) % {"precio": precio_base}
+=======
             ) % {"precio": precio_base}
 
         # Filter out occupied hours for this activity and date (excluding current instance hour)
@@ -334,3 +337,74 @@ class HorarioDisponibleForm(forms.ModelForm):
                     return
 
             self._update_errors(e)
+
+
+# ── Cancelación de clase puntual (admin) ──────────────────────────────────────
+
+class AdminCancelarClaseActividadForm(forms.Form):
+    actividad = forms.ModelChoiceField(
+        queryset=Actividad.objects.all(),
+        label=_("Actividad"),
+        empty_label=_("— Seleccioná una actividad —"),
+        widget=forms.RadioSelect,
+    )
+
+
+class AdminCancelarClaseFechaForm(forms.Form):
+    fecha = forms.DateField(
+        label=_("Fecha de la clase"),
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        hoy = timezone.now().date()
+        widget = self.fields["fecha"].widget
+        widget.attrs.update({
+            "class": "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5",
+            "min": hoy.isoformat(),
+            "max": fecha_limite_reserva().isoformat(),
+        })
+
+    def clean_fecha(self):
+        fecha = self.cleaned_data["fecha"]
+        hoy = timezone.now().date()
+        if fecha < hoy:
+            raise forms.ValidationError(_("La fecha debe ser hoy o posterior."))
+        if fecha > fecha_limite_reserva():
+            raise forms.ValidationError(_("La fecha está fuera del rango permitido."))
+        if fecha.weekday() not in DIAS_HABILES:
+            raise forms.ValidationError(_("El establecimiento no abre los domingos."))
+        if (fecha.month, fecha.day) in FERIADOS_INAMOVIBLES:
+            raise forms.ValidationError(_("El establecimiento permanece cerrado por feriado nacional."))
+        return fecha
+
+
+class AdminCancelarClaseHoraForm(forms.Form):
+    hora = forms.TypedChoiceField(
+        label=_("Horario"),
+        coerce=int,
+        choices=[],
+        widget=forms.RadioSelect,
+    )
+
+    def __init__(self, *args, horas_info=None, fecha=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        horas_info = horas_info or []
+        choices = [
+            (info["hora"], f"{info['hora']:02d}:00 – {info['hora'] + 1:02d}:00")
+            for info in horas_info
+        ]
+        self.fields["hora"].choices = choices
+        self.fecha = fecha
+
+    def clean_hora(self):
+        hora = self.cleaned_data.get("hora")
+        if hora is None:
+            raise forms.ValidationError(_("Seleccioná un horario."))
+        if self.fecha is not None:
+            from .cancelacion_clase import validar_fecha_hora_futura
+
+            validar_fecha_hora_futura(self.fecha, hora)
+        return hora
+>>>>>>> Stashed changes

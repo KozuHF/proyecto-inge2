@@ -1,0 +1,9 @@
+Hola {{ usuario.nombre }},
+
+Te informamos que la clase de {{ actividad }} del {{ dia_nombre }} {{ fecha }} a las {{ hora|stringformat:"02d" }}:00 ha sido cancelada por el establecimiento.
+
+{% if mensaje_compensacion %}{{ mensaje_compensacion }}
+{% endif %}
+Disculpá el inconveniente.
+
+— Equipo Club360

@@ -45,6 +45,14 @@
                 Turnos
             </a>
 
+            <!-- Cancelar clase puntual -->
+            <a href="{% url 'cancelar_clase_actividad' %}" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all {% if request.resolver_match.url_name == 'cancelar_clase_actividad' or request.resolver_match.url_name == 'cancelar_clase_fecha' or request.resolver_match.url_name == 'cancelar_clase_hora' or request.resolver_match.url_name == 'cancelar_clase_revisar' or request.resolver_match.url_name == 'cancelar_clase_confirmar' %}bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-bold{% else %}text-gray-600 hover:bg-gray-50 hover:text-red-600 dark:text-gray-300 dark:hover:bg-gray-700{% endif %}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                Cancelar clase
+            </a>
+
             {% endif %}
 
             <!-- Escanear asistencia (admin y empleado) -->
