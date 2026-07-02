@@ -2,7 +2,7 @@ Hola {{ usuario.nombre }},
 
 Te informamos que la clase de {{ actividad }} del {{ dia_nombre }} {{ fecha }} a las {{ hora|stringformat:"02d" }}:00 fue cancelada por el club.
 
-Como tenías una seña registrada, ya te reembolsamos ${{ monto_reembolso }} a la tarjeta con la que pagaste.
+Como ya tenías esa clase pagada, te otorgamos un crédito gratis para una clase de {{ actividad }}, válido hasta el {{ fecha_vencimiento }}.
 
 Lamentamos los inconvenientes.
 

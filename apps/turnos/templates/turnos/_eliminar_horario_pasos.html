@@ -1,0 +1,25 @@
+{% load i18n %}
+<ol class="flex items-center w-full mb-6 text-xs font-semibold text-center text-gray-500">
+  <li class="flex items-center {% if paso >= 1 %}text-red-600{% endif %}">
+    <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
+      {% if paso > 1 %}border-red-600 bg-red-600 text-white
+      {% elif paso == 1 %}border-red-600 text-red-600
+      {% else %}border-gray-300 text-gray-400{% endif %}">1</span>
+    <span class="hidden sm:inline-flex ml-1 mr-1">Actividad</span>
+    <span class="flex-1 border-t-2 {% if paso > 1 %}border-red-600{% else %}border-gray-200{% endif %} mx-1 w-4"></span>
+  </li>
+  <li class="flex items-center {% if paso >= 2 %}text-red-600{% endif %}">
+    <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
+      {% if paso > 2 %}border-red-600 bg-red-600 text-white
+      {% elif paso == 2 %}border-red-600 text-red-600
+      {% else %}border-gray-300 text-gray-400{% endif %}">2</span>
+    <span class="hidden sm:inline-flex ml-1 mr-1">Día</span>
+    <span class="flex-1 border-t-2 {% if paso > 2 %}border-red-600{% else %}border-gray-200{% endif %} mx-1 w-4"></span>
+  </li>
+  <li class="flex items-center {% if paso >= 3 %}text-red-600{% endif %}">
+    <span class="flex items-center justify-center w-7 h-7 rounded-full shrink-0 border-2
+      {% if paso == 3 %}border-red-600 text-red-600
+      {% else %}border-gray-300 text-gray-400{% endif %}">3</span>
+    <span class="hidden sm:inline-flex ml-1">Franja horaria</span>
+  </li>
+</ol>

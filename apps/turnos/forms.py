@@ -4,7 +4,15 @@ from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 
 from apps.actividades.models import Actividad
-from .models import DIAS_HABILES, HORAS_VALIDAS, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, FERIADOS_INAMOVIBLES, fecha_limite_reserva
+from .models import (
+    DIAS_HABILES,
+    HORAS_VALIDAS,
+    MODO_TURNO_UNICO,
+    MODO_VARIOS_TURNOS,
+    FERIADOS_INAMOVIBLES,
+    HorarioDisponible,
+    fecha_limite_reserva,
+)
 
 
 class PasoTipoAbonoForm(forms.Form):
@@ -101,6 +109,47 @@ class PasoDiaSemanaForm(forms.Form):
             else:
                 mes += 1
         self.fields["mes"].choices = opciones
+
+
+class EliminarHorarioDiaForm(forms.Form):
+    """Paso 2 del wizard de eliminar franja horaria: día de la semana."""
+
+    DIAS = [
+        (0, _("Lunes")), (1, _("Martes")), (2, _("Miércoles")),
+        (3, _("Jueves")), (4, _("Viernes")), (5, _("Sábado")),
+    ]
+
+    dia_semana = forms.TypedChoiceField(
+        label=_("Día de la semana"),
+        coerce=int,
+        choices=[],  # se inyectan en __init__ según los días con franjas activas
+        widget=forms.RadioSelect,
+    )
+
+    def __init__(self, *args, dias_disponibles=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        dias_disponibles = dias_disponibles or []
+        self.fields["dia_semana"].choices = [
+            (valor, etiqueta) for valor, etiqueta in self.DIAS if valor in dias_disponibles
+        ]
+
+
+class EliminarHorarioFranjaForm(forms.Form):
+    """Paso 3 del wizard de eliminar franja horaria: hora puntual."""
+
+    horario = forms.ModelChoiceField(
+        queryset=HorarioDisponible.objects.none(),
+        label=_("Franja horaria"),
+        widget=forms.RadioSelect,
+    )
+
+    def __init__(self, *args, horarios_qs=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if horarios_qs is not None:
+            self.fields["horario"].queryset = horarios_qs
+        self.fields["horario"].label_from_instance = (
+            lambda h: f"{h.hora:02d}:00 – {h.hora + 1:02d}:00"
+        )
 
 
 class PasoHoraForm(forms.Form):

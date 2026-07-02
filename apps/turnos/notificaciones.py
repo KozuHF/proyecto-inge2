@@ -20,6 +20,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import Reserva
 
@@ -246,7 +247,7 @@ def enviar_aviso_admin_lista_espera(total: int) -> bool:
 
 
 def enviar_aviso_cancelacion_clase(reserva: "Reserva", monto_reembolso: Decimal) -> bool:
-    """Notifica al cliente que su clase fue cancelada por el club y se le reembolsará la seña."""
+    """Notifica al cliente que su clase fue cancelada por el club y ya se le reembolsó la seña."""
     turno = reserva.turno
     dia_nombre = DIAS_SEMANA[turno.fecha.weekday()]
     contexto = {
@@ -269,6 +270,37 @@ def enviar_aviso_cancelacion_clase(reserva: "Reserva", monto_reembolso: Decimal)
         mail.attach_alternative(cuerpo_html, "text/html")
         mail.send()
         logger.info("Aviso de cancelación con reembolso enviado a %s.", reserva.usuario.email)
+        return True
+    except Exception:
+        logger.exception("Error al enviar aviso de cancelación a %s.", reserva.usuario.email)
+        return False
+
+
+def enviar_aviso_cancelacion_clase_credito(reserva: "Reserva", credito) -> bool:
+    """Notifica al cliente (abonado o turno pagado completo) que su clase fue
+    cancelada por el club y se le otorgó un crédito gratis a cambio."""
+    turno = reserva.turno
+    dia_nombre = DIAS_SEMANA[turno.fecha.weekday()]
+    contexto = {
+        "usuario": reserva.usuario,
+        "actividad": turno.actividad.get_nombre_display(),
+        "fecha": turno.fecha.strftime("%d/%m/%Y"),
+        "dia_nombre": dia_nombre,
+        "hora": turno.hora,
+        "fecha_vencimiento": timezone.localtime(credito.fecha_vencimiento).strftime("%d/%m/%Y"),
+    }
+    cuerpo_texto = render_to_string("turnos/emails/cancelacion_clase_credito.txt", contexto)
+    cuerpo_html = render_to_string("turnos/emails/cancelacion_clase_credito.html", contexto)
+    try:
+        mail = EmailMultiAlternatives(
+            "Tu clase fue cancelada — Club360",
+            cuerpo_texto,
+            settings.DEFAULT_FROM_EMAIL,
+            [reserva.usuario.email],
+        )
+        mail.attach_alternative(cuerpo_html, "text/html")
+        mail.send()
+        logger.info("Aviso de cancelación con crédito enviado a %s.", reserva.usuario.email)
         return True
     except Exception:
         logger.exception("Error al enviar aviso de cancelación a %s.", reserva.usuario.email)
