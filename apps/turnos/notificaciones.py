@@ -20,6 +20,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from .models import Reserva
@@ -257,7 +258,12 @@ def enviar_aviso_cancelacion_clase(reserva: "Reserva", monto_reembolso: Decimal)
 
 def enviar_aviso_cancelacion_clase_credito(reserva: "Reserva", credito=None) -> bool:
     """Notifica al cliente (abonado o turno pagado completo) que se le otorgó un crédito gratis."""
-    return enviar_aviso_cancelacion_clase_por_club(reserva, "credito")
+    fecha_vencimiento = None
+    if credito is not None:
+        fecha_vencimiento = timezone.localtime(credito.fecha_vencimiento).strftime("%d/%m/%Y")
+    return enviar_aviso_cancelacion_clase_por_club(
+        reserva, "credito", fecha_vencimiento_credito=fecha_vencimiento
+    )
 
 
 def enviar_aviso_cancelacion_clase_por_club(
@@ -265,6 +271,7 @@ def enviar_aviso_cancelacion_clase_por_club(
     tipo_compensacion: str,
     *,
     monto_reembolso: Decimal | None = None,
+    fecha_vencimiento_credito: str | None = None,
 ) -> bool:
     """
     Aviso de cancelación de una clase puntual por el establecimiento.
@@ -285,8 +292,15 @@ def enviar_aviso_cancelacion_clase_por_club(
 
     if tipo_compensacion == "credito":
         mensaje_compensacion = _("Se le ha otorgado un crédito de %(deporte)s.") % {"deporte": actividad}
+        if fecha_vencimiento_credito:
+            mensaje_compensacion += " " + _("Válido hasta el %(fecha)s.") % {"fecha": fecha_vencimiento_credito}
     elif tipo_compensacion == "reembolso_sena":
-        mensaje_compensacion = _("Se le ha reintegrado el pago de la seña que había realizado.")
+        if monto_reembolso:
+            mensaje_compensacion = _("Se le ha reintegrado el pago de la seña ($%(monto)s) que había realizado.") % {
+                "monto": monto_reembolso
+            }
+        else:
+            mensaje_compensacion = _("Se le ha reintegrado el pago de la seña que había realizado.")
     else:
         mensaje_compensacion = ""
 
