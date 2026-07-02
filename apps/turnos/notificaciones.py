@@ -247,29 +247,72 @@ def enviar_aviso_admin_lista_espera(total: int) -> bool:
 
 def enviar_aviso_cancelacion_clase(reserva: "Reserva", monto_reembolso: Decimal) -> bool:
     """Notifica al cliente que su clase fue cancelada por el club y se le reembolsará la seña."""
+    return enviar_aviso_cancelacion_clase_por_club(
+        reserva,
+        "reembolso_sena",
+        monto_reembolso=monto_reembolso,
+    )
+
+
+def enviar_aviso_cancelacion_clase_por_club(
+    reserva: "Reserva",
+    tipo_compensacion: str,
+    *,
+    monto_reembolso: Decimal | None = None,
+) -> bool:
+    """
+    Aviso de cancelación de una clase puntual por el establecimiento.
+
+    tipo_compensacion: 'credito' | 'reembolso_sena' | 'ninguna'
+    """
+    usuario = reserva.usuario
+    if not getattr(usuario, "email", ""):
+        logger.warning(
+            "No se envió aviso de cancelación: usuario %s sin email.",
+            getattr(usuario, "pk", "?"),
+        )
+        return False
+
     turno = reserva.turno
     dia_nombre = DIAS_SEMANA[turno.fecha.weekday()]
+    actividad = turno.actividad.get_nombre_display()
+
+    if tipo_compensacion == "credito":
+        mensaje_compensacion = _("Se le ha otorgado un crédito de %(deporte)s.") % {"deporte": actividad}
+    elif tipo_compensacion == "reembolso_sena":
+        mensaje_compensacion = _("Se le ha reintegrado el pago de la seña que había realizado.")
+    else:
+        mensaje_compensacion = ""
+
     contexto = {
-        "usuario": reserva.usuario,
-        "actividad": turno.actividad.get_nombre_display(),
+        "usuario": usuario,
+        "actividad": actividad,
         "fecha": turno.fecha.strftime("%d/%m/%Y"),
         "dia_nombre": dia_nombre,
         "hora": turno.hora,
         "monto_reembolso": monto_reembolso,
+        "tipo_compensacion": tipo_compensacion,
+        "mensaje_compensacion": mensaje_compensacion,
+        "color_marca": "#16a34a",
     }
-    cuerpo_texto = render_to_string("turnos/emails/cancelacion_clase_reembolso.txt", contexto)
-    cuerpo_html = render_to_string("turnos/emails/cancelacion_clase_reembolso.html", contexto)
+    cuerpo_texto = render_to_string("turnos/emails/cancelacion_clase_por_club.txt", contexto)
+    cuerpo_html = render_to_string("turnos/emails/cancelacion_clase_por_club.html", contexto)
+
     try:
         mail = EmailMultiAlternatives(
-            "Tu clase fue cancelada — Club360",
+            "Clase cancelada — Club360",
             cuerpo_texto,
             settings.DEFAULT_FROM_EMAIL,
-            [reserva.usuario.email],
+            [usuario.email],
         )
         mail.attach_alternative(cuerpo_html, "text/html")
         mail.send()
-        logger.info("Aviso de cancelación con reembolso enviado a %s.", reserva.usuario.email)
+        logger.info(
+            "Aviso de cancelación de clase (%s) enviado a %s.",
+            tipo_compensacion,
+            usuario.email,
+        )
         return True
     except Exception:
-        logger.exception("Error al enviar aviso de cancelación a %s.", reserva.usuario.email)
+        logger.exception("Error al enviar aviso de cancelación de clase a %s.", usuario.email)
         return False
