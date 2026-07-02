@@ -356,16 +356,12 @@ def eliminar_usuario_por_dni(request):
         else:
             email = usuario.email
             uid = usuario.pk
-            turnos_cancelados = services.eliminar_cuenta(usuario)
+            services.eliminar_cuenta(usuario)
             logger.warning(
-                "Cuenta eliminada por %s: %s (ID=%s) – %d turnos cancelados",
-                operador.email, email, uid, turnos_cancelados,
+                "Cuenta eliminada por %s: %s (ID=%s)",
+                operador.email, email, uid,
             )
-            messages.success(
-                request,
-                _("La cuenta de %(email)s fue eliminada. %(n)d turno(s) próximo(s) cancelado(s).")
-                % {"email": email, "n": turnos_cancelados},
-            )
+            messages.success(request, _("Se ha eliminado la cuenta."))
             return redirect("accounts:eliminar_por_dni")
         usuario = None
 
@@ -386,6 +382,26 @@ def eliminar_usuario_por_dni(request):
     })
 
 
+def _tiene_reservas_activas(usuario) -> bool:
+    """Reserva activa = tiene el cupo asegurado (confirmada o invitada). Estar en
+    lista de espera no cuenta, ya que ahí no se llegó a ocupar ningún cupo."""
+    from apps.turnos.models import Reserva
+
+    return Reserva.objects.filter(
+        usuario=usuario,
+        estado__in=[Reserva.Estado.CONFIRMADA, Reserva.Estado.INVITADO],
+    ).exists()
+
+
+def _tiene_pagos_pendientes(usuario) -> bool:
+    """Deuda pendiente por una suspensión activa (global o por deporte)."""
+    from apps.turnos.models import SuspensionAbonado
+
+    if usuario.suspendido:
+        return True
+    return SuspensionAbonado.objects.filter(usuario=usuario, activa=True).exists()
+
+
 def _verificar_eliminacion(operador, usuario):
     """Devuelve un mensaje de error si la eliminación no está permitida, o None si procede."""
     if usuario.pk == operador.pk:
@@ -394,6 +410,10 @@ def _verificar_eliminacion(operador, usuario):
         return _("No se pueden eliminar cuentas de administrador.")
     if operador.rol == Roles.EMPLOYEE and usuario.rol != Roles.USER:
         return _("Los empleados solo pueden eliminar cuentas de clientes.")
+    if _tiene_reservas_activas(usuario):
+        return _("No se puede eliminar: el usuario tiene reservas activas (con cupo asegurado).")
+    if _tiene_pagos_pendientes(usuario):
+        return _("No se puede eliminar: el usuario tiene pagos pendientes (deuda de suspensión sin saldar).")
     return None
 
 

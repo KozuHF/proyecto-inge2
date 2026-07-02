@@ -36,6 +36,8 @@ from .forms import (
     TurnoForm,
     HorarioDisponibleForm,
     EditarPreciosCuposForm,
+    EliminarHorarioDiaForm,
+    EliminarHorarioFranjaForm,
 )
 from .models import GrupoReservaMensual, HorarioDisponible, MODO_TURNO_UNICO, MODO_VARIOS_TURNOS, Reserva, Turno
 from .abono_mensual import monto_total_desde_fechas
@@ -1136,6 +1138,88 @@ def editar_horario_disponible(request, pk):
     )
 
 
+_WIZARD_ELIMINAR_HORARIO_KEY = "wizard_eliminar_horario"
+
+
+def _wizard_eliminar_horario_get(request) -> dict:
+    return request.session.get(_WIZARD_ELIMINAR_HORARIO_KEY, {})
+
+
+def _wizard_eliminar_horario_set(request, data: dict):
+    request.session[_WIZARD_ELIMINAR_HORARIO_KEY] = data
+    request.session.modified = True
+
+
+def _wizard_eliminar_horario_clear(request):
+    request.session.pop(_WIZARD_ELIMINAR_HORARIO_KEY, None)
+
+
+@login_required
+@rol_requerido("admin")
+def eliminar_horario_wizard_actividad(request):
+    """Paso 1: elegir la actividad de la franja horaria a eliminar."""
+    _wizard_eliminar_horario_clear(request)
+    form = PasoActividadForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        _wizard_eliminar_horario_set(request, {"actividad_id": form.cleaned_data["actividad"].pk})
+        return redirect("turnos:eliminar_horario_wizard_dia")
+    return render(request, "turnos/eliminar_horario_wizard_actividad.html", {"form": form, "paso": 1})
+
+
+@login_required
+@rol_requerido("admin")
+def eliminar_horario_wizard_dia(request):
+    """Paso 2: elegir el día de la semana (solo se muestran días con franjas activas)."""
+    wizard = _wizard_eliminar_horario_get(request)
+    if "actividad_id" not in wizard:
+        return redirect("turnos:eliminar_horario_wizard_actividad")
+
+    actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
+    dias_disponibles = list(
+        HorarioDisponible.objects
+        .filter(actividad=actividad, activo=True)
+        .values_list("dia_semana", flat=True)
+        .distinct()
+    )
+    if not dias_disponibles:
+        messages.info(request, _("%(actividad)s no tiene franjas horarias activas.") % {"actividad": actividad})
+        return redirect("turnos:eliminar_horario_wizard_actividad")
+
+    form = EliminarHorarioDiaForm(request.POST or None, dias_disponibles=dias_disponibles)
+    if request.method == "POST" and form.is_valid():
+        wizard["dia_semana"] = form.cleaned_data["dia_semana"]
+        _wizard_eliminar_horario_set(request, wizard)
+        return redirect("turnos:eliminar_horario_wizard_franja")
+    return render(request, "turnos/eliminar_horario_wizard_dia.html", {
+        "form": form, "actividad": actividad, "paso": 2,
+    })
+
+
+@login_required
+@rol_requerido("admin")
+def eliminar_horario_wizard_franja(request):
+    """Paso 3: elegir la franja horaria puntual. Al confirmar, va a la pantalla
+    de aceptar/rechazar ya existente (`eliminar_horario_disponible`)."""
+    wizard = _wizard_eliminar_horario_get(request)
+    if "actividad_id" not in wizard or "dia_semana" not in wizard:
+        return redirect("turnos:eliminar_horario_wizard_actividad")
+
+    actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
+    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
+    horarios_qs = HorarioDisponible.objects.filter(
+        actividad=actividad, dia_semana=wizard["dia_semana"], activo=True
+    ).order_by("hora")
+
+    form = EliminarHorarioFranjaForm(request.POST or None, horarios_qs=horarios_qs)
+    if request.method == "POST" and form.is_valid():
+        horario = form.cleaned_data["horario"]
+        _wizard_eliminar_horario_clear(request)
+        return redirect("turnos:eliminar_horario_disponible", pk=horario.pk)
+    return render(request, "turnos/eliminar_horario_wizard_franja.html", {
+        "form": form, "actividad": actividad, "dia_nombre": dias[wizard["dia_semana"]], "paso": 3,
+    })
+
+
 @login_required
 @rol_requerido("admin")
 def eliminar_horario_disponible(request, pk):
@@ -1148,7 +1232,7 @@ def eliminar_horario_disponible(request, pk):
     - PENDIENTE                → se cancela sin cargo.
     """
     from apps.creditos import services as creditos_services
-    from .notificaciones import enviar_aviso_cancelacion_clase_por_club
+    from .notificaciones import enviar_aviso_cancelacion_clase, enviar_aviso_cancelacion_clase_credito
 
     horario = get_object_or_404(HorarioDisponible, pk=pk)
     hoy = timezone.now().date()
@@ -1183,11 +1267,12 @@ def eliminar_horario_disponible(request, pk):
 
     if request.method == "POST":
         with transaction.atomic():
-            # Emitir créditos
+            # Emitir créditos y notificar
             for reserva in creditos_a_emitir:
-                creditos_services.otorgar_credito_cancelacion(reserva)
+                credito = creditos_services.otorgar_credito_cancelacion(reserva)
                 reserva.estado = Reserva.Estado.CANCELADA
                 reserva.save(update_fields=["estado"])
+                enviar_aviso_cancelacion_clase_credito(reserva, credito)
 
             # Reembolsos: cancelar y notificar
             for reserva in reembolsos_pendientes:

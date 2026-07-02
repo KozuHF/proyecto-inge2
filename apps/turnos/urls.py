@@ -26,4 +26,9 @@ urlpatterns = [
     path("horarios/crear/", views.crear_horario_disponible, name="crear_horario_disponible"),
     path("horarios/<int:pk>/editar/", views.editar_horario_disponible, name="editar_horario_disponible"),
     path("horarios/<int:pk>/eliminar/", views.eliminar_horario_disponible, name="eliminar_horario_disponible"),
+
+    # ── Wizard de eliminar franja horaria (solo admin) ────────────────────────
+    path("horarios/eliminar/actividad/", views.eliminar_horario_wizard_actividad, name="eliminar_horario_wizard_actividad"),
+    path("horarios/eliminar/dia/", views.eliminar_horario_wizard_dia, name="eliminar_horario_wizard_dia"),
+    path("horarios/eliminar/franja/", views.eliminar_horario_wizard_franja, name="eliminar_horario_wizard_franja"),
 ]

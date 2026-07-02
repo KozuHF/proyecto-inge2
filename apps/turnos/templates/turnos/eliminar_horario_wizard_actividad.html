@@ -1,0 +1,41 @@
+{% extends "accounts/panel_base.html" %}
+{% load i18n %}
+
+{% block title %}Eliminar franja horaria — Club360{% endblock title %}
+
+{% block panel_content %}
+<div class="max-w-lg mx-auto">
+
+  <nav class="text-sm text-gray-400 mb-6">
+    <a href="{% url 'panel_turnos' %}" class="hover:text-gray-600">Turnos</a>
+    <span class="mx-2">/</span>
+    <span class="text-gray-600 font-medium">Eliminar franja horaria</span>
+  </nav>
+
+  <h1 class="text-2xl font-extrabold text-gray-900 dark:text-white mb-2">Eliminar franja horaria</h1>
+
+  {% include "turnos/_eliminar_horario_pasos.html" %}
+
+  <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-8 dark:bg-gray-900 dark:border-gray-700">
+    <h2 class="text-lg font-bold text-gray-800 dark:text-white mb-6">¿Qué actividad?</h2>
+
+    {% include "accounts/_messages.html" %}
+
+    <form method="post" class="space-y-3">
+      {% csrf_token %}
+      {% for radio in form.actividad %}
+        <label class="flex items-center gap-3 p-4 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition">
+          {{ radio.tag }}
+          <span class="font-medium text-gray-800 dark:text-gray-200">{{ radio.choice_label }}</span>
+        </label>
+      {% endfor %}
+      {{ form.actividad.errors }}
+
+      <button type="submit"
+        class="w-full mt-4 text-white bg-red-600 hover:bg-red-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
+        Siguiente →
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock panel_content %}
