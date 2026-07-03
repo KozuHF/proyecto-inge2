@@ -75,6 +75,11 @@ class LoginForm(AuthenticationForm):
         "inactive": _("Esta cuenta está desactivada."),
     }
 
+    def clean(self):
+        if self.cleaned_data.get("username"):
+            self.cleaned_data["username"] = self.cleaned_data["username"].strip().lower()
+        return super().clean()
+
 
 class UsuarioCreacionForm(forms.ModelForm):
     """

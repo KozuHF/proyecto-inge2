@@ -99,6 +99,12 @@ class LoginRedirectSeguroTest(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.url, reverse("home"))  # va a home, no al sitio externo
 
+    def test_login_case_insensitive_email(self):
+        cred_mixed = {"username": "LoGiN@TeSt.CoM", "password": "Password123!"}
+        resp = self.client.post(reverse("accounts:login"), cred_mixed)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("home"))
+
 
 class AccesoCuentaAjenaTest(TestCase):
     """Un usuario no puede acceder a la cuenta de otro por URL."""
