@@ -189,6 +189,15 @@ class Turno(models.Model):
         help_text=_("Si se completa, reemplaza el precio de la actividad."),
     )
 
+    cancelado_por_club = models.BooleanField(
+        default=False,
+        verbose_name=_("Cancelado por el club"),
+        help_text=_(
+            "El club canceló esta clase puntual (sin borrar la franja semanal). "
+            "No se puede volver a reservar ni se recrea automáticamente."
+        ),
+    )
+
     class Meta:
         verbose_name        = _("Turno")
         verbose_name_plural = _("Turnos")

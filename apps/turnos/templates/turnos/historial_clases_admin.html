@@ -1,0 +1,127 @@
+{% extends "accounts/panel_base.html" %}
+{% load i18n %}
+
+{% block title %}Historial de Clases — Club360{% endblock title %}
+
+{% block panel_content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white">Historial de Clases</h1>
+            <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
+                Clases ya dictadas, con asistencia y ocupación. Solo lectura.
+            </p>
+        </div>
+        <div>
+            <a href="{% url 'panel_turnos' %}"
+               class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">
+                ← Gestión de Turnos
+            </a>
+        </div>
+    </div>
+
+    {% include "accounts/_messages.html" %}
+
+    <!-- Filtros -->
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8 dark:bg-gray-800 dark:border-gray-700">
+        <form method="get" class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+            <div>
+                <label for="fecha" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Fecha</label>
+                <input type="date" id="fecha" name="fecha" value="{{ fecha|date:'Y-m-d' }}"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+            </div>
+            <div>
+                <label for="actividad" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Deporte</label>
+                <select id="actividad" name="actividad"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="todas" {% if actividad_seleccionada == 'todas' or not actividad_seleccionada %}selected{% endif %}>Todos los deportes</option>
+                    {% for act in actividades %}
+                        <option value="{{ act.id }}" {% if actividad_seleccionada == act.id|stringformat:"s" %}selected{% endif %}>
+                            {{ act.get_nombre_display }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex gap-3">
+                <button type="submit"
+                    class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition">
+                    Filtrar
+                </button>
+                <a href="{% url 'historial_clases_turnos' %}"
+                   class="flex-1 text-center px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">
+                    Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Lista -->
+    {% if turnos %}
+    <div class="grid grid-cols-1 gap-4">
+        {% for turno in turnos %}
+        <div class="rounded-2xl shadow-sm p-6 border bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-gray-100 dark:border-gray-700">
+                <div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                        {{ turno.actividad.get_nombre_display }}
+                    </span>
+                    {% if turno.cancelado_por_club %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 ml-2">
+                        Cancelada por el club
+                    </span>
+                    {% endif %}
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-white mt-1">
+                        {{ turno.fecha|date:"d/m/Y" }} &nbsp;|&nbsp; {{ turno.hora|stringformat:"02d" }}:00 – {{ turno.hora|add:1|stringformat:"02d" }}:00
+                    </h3>
+                </div>
+                <div class="flex items-center gap-3 mt-3 sm:mt-0">
+                    <span class="px-3 py-1.5 text-xs font-semibold rounded-lg text-gray-700 bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
+                        Confirmados: {{ turno.confirmadas_count }}/{{ turno.cupos }}
+                    </span>
+                    <span class="px-3 py-1.5 text-xs font-semibold rounded-lg text-green-700 bg-green-100 dark:bg-green-900/20 dark:text-green-400">
+                        Presentes: {{ turno.presentes_count }}
+                    </span>
+                </div>
+            </div>
+
+            <details class="group mt-4 pt-2">
+                <summary class="flex justify-between items-center font-medium cursor-pointer list-none text-sm text-green-600 dark:text-green-400 hover:underline">
+                    <span>Ver detalle de asistentes</span>
+                    <span class="transition group-open:rotate-180 text-gray-400 dark:text-gray-500">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </span>
+                </summary>
+                <ul class="mt-4 space-y-1.5 pl-2">
+                    {% for reserva in turno.reservas.all %}
+                        {% if reserva.estado == 'confirmada' %}
+                        <li class="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                            {% if reserva.asistencia.presente %}
+                                <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                            {% else %}
+                                <span class="w-1.5 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></span>
+                            {% endif %}
+                            <span class="font-medium">{{ reserva.usuario.get_full_name }}</span>
+                            <span class="text-gray-400 dark:text-gray-500">&lt;{{ reserva.usuario.email }}&gt;</span>
+                            <span class="text-xs {% if reserva.asistencia.presente %}text-green-600 dark:text-green-400{% else %}text-gray-400 dark:text-gray-500{% endif %}">
+                                {% if reserva.asistencia.presente %}Presente{% else %}Sin marcar{% endif %}
+                            </span>
+                        </li>
+                        {% endif %}
+                    {% empty %}
+                        <li class="text-sm text-gray-400 dark:text-gray-500 italic">Sin reservas confirmadas.</li>
+                    {% endfor %}
+                </ul>
+            </details>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-gray-500 dark:text-gray-400">No hay clases pasadas que coincidan con los criterios seleccionados.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock panel_content %}

@@ -46,12 +46,16 @@ def _fechas_del_dia_en_mes(dia_semana: int, anio: int, mes: int) -> list[date]:
 
 
 def _obtener_o_crear_turno(actividad: Actividad, fecha: date, hora: int) -> Turno:
-    turno, _ = Turno.objects.get_or_create(
+    turno, _creado = Turno.objects.get_or_create(
         actividad=actividad,
         fecha=fecha,
         hora=hora,
         defaults={"cupos": actividad.cupos},
     )
+    if turno.cancelado_por_club:
+        raise ValidationError(
+            _("Esta clase fue cancelada por el club y no está disponible para reservar.")
+        )
     return turno
 
 
@@ -177,9 +181,17 @@ def obtener_fechas_candidatas_varios(fecha_referencia: date, hora: int, activida
     mes = fecha_referencia.month
     fechas = _fechas_del_dia_en_mes(fecha_referencia.weekday(), anio, mes)
 
+    fechas_canceladas = set()
+    if actividad is not None:
+        fechas_canceladas = set(
+            Turno.objects.filter(
+                actividad=actividad, hora=hora, fecha__in=fechas, cancelado_por_club=True
+            ).values_list("fecha", flat=True)
+        )
+
     valid_fechas = []
     for f in fechas:
-        if f >= hoy:
+        if f >= hoy and f not in fechas_canceladas:
             try:
                 _validar_dia_habil(f)
                 valid_fechas.append(f)
@@ -585,6 +597,9 @@ def obtener_horas_disponibles(actividad, fecha) -> list[dict]:
     for horario in horarios:
         hora = horario.hora
         turno = turnos_existentes.get(hora)
+        if turno and turno.cancelado_por_club:
+            # El club canceló esta clase puntual; no se ofrece para esta fecha.
+            continue
         if turno:
             libres    = turno.cupos_libres
             lleno     = turno.esta_lleno

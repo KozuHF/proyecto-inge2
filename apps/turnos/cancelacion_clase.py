@@ -156,6 +156,10 @@ def ejecutar_cancelacion_clase(turno: Turno) -> list[ImpactoReserva]:
             monto_reembolso=monto_reembolso,
         )
 
-    turno.delete()
+    # No se borra el Turno: si se borrara, el sistema lo volvería a crear solo
+    # apenas alguien intente reservar esa misma actividad/fecha/hora (individual
+    # o dentro de un abono). Se marca como cancelado para que quede bloqueado.
+    turno.cancelado_por_club = True
+    turno.save(update_fields=["cancelado_por_club"])
     return impactos
 

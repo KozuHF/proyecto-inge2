@@ -652,11 +652,14 @@ def panel_turnos(request):
         es_feriado = False
         es_dia_invalido = False
 
-    # Solo turnos reales persistidos en BD (no más lejanos que 6 meses desde hoy)
-    max_futuro = date_type.today() + timedelta(days=6 * 30)
+    # Solo turnos reales persistidos en BD (no más lejanos que 6 meses desde hoy,
+    # ni anteriores a hoy: este panel es para gestionar turnos vigentes/futuros).
+    hoy_gestion = date_type.today()
+    max_futuro = hoy_gestion + timedelta(days=6 * 30)
     turnos_qs = (
         Turno.objects
-        .filter(fecha__lte=max_futuro)
+        .filter(fecha__gte=hoy_gestion, fecha__lte=max_futuro)
+        .exclude(cancelado_por_club=True)
         .select_related("actividad")
         .prefetch_related("reservas__usuario")
         .annotate(
@@ -713,6 +716,58 @@ def panel_turnos(request):
         "estado_seleccionado": estado_ocupacion,
         "es_dia_invalido": es_dia_invalido,
         "es_feriado": es_feriado,
+    })
+
+
+@login_required
+@rol_requerido(["admin", "employee"])
+def historial_clases_turnos(request):
+    """Clases ya dictadas (fecha pasada), de solo lectura. Contraparte de
+    'Gestión de Turnos', que desde el fix solo muestra turnos vigentes/futuros."""
+    fecha_str = request.GET.get("fecha")
+    fecha = None
+    if fecha_str:
+        try:
+            fecha = date_type.fromisoformat(fecha_str)
+        except ValueError:
+            pass
+
+    actividad_id = request.GET.get("actividad")
+    actividades = Actividad.objects.all()
+
+    hoy = date_type.today()
+    min_pasado = hoy - timedelta(days=6 * 30)
+
+    turnos_qs = (
+        Turno.objects
+        .filter(fecha__lt=hoy, fecha__gte=min_pasado)
+        .select_related("actividad")
+        .prefetch_related("reservas__usuario", "reservas__asistencia")
+        .annotate(
+            confirmadas_count=Count(
+                "reservas", filter=Q(reservas__estado=Reserva.Estado.CONFIRMADA)
+            ),
+            presentes_count=Count(
+                "reservas", filter=Q(reservas__asistencia__presente=True)
+            ),
+        )
+        .order_by("-fecha", "-hora", "actividad")
+    )
+
+    if fecha:
+        turnos_qs = turnos_qs.filter(fecha=fecha)
+
+    if actividad_id and actividad_id != "todas":
+        try:
+            turnos_qs = turnos_qs.filter(actividad_id=int(actividad_id))
+        except ValueError:
+            pass
+
+    return render(request, "turnos/historial_clases_admin.html", {
+        "turnos": turnos_qs,
+        "fecha": fecha,
+        "actividades": actividades,
+        "actividad_seleccionada": actividad_id,
     })
 
 
