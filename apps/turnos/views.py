@@ -735,39 +735,44 @@ def historial_clases_turnos(request):
     actividad_id = request.GET.get("actividad")
     actividades = Actividad.objects.all()
 
-    hoy = date_type.today()
-    min_pasado = hoy - timedelta(days=6 * 30)
+    filtrado = bool(request.GET)
+    turnos_qs = Turno.objects.none()
 
-    turnos_qs = (
-        Turno.objects
-        .filter(fecha__lt=hoy, fecha__gte=min_pasado)
-        .select_related("actividad")
-        .prefetch_related("reservas__usuario", "reservas__asistencia")
-        .annotate(
-            confirmadas_count=Count(
-                "reservas", filter=Q(reservas__estado=Reserva.Estado.CONFIRMADA)
-            ),
-            presentes_count=Count(
-                "reservas", filter=Q(reservas__asistencia__presente=True)
-            ),
+    if filtrado:
+        hoy = date_type.today()
+        min_pasado = hoy - timedelta(days=6 * 30)
+
+        turnos_qs = (
+            Turno.objects
+            .filter(fecha__lt=hoy, fecha__gte=min_pasado)
+            .select_related("actividad")
+            .prefetch_related("reservas__usuario", "reservas__asistencia")
+            .annotate(
+                confirmadas_count=Count(
+                    "reservas", filter=Q(reservas__estado=Reserva.Estado.CONFIRMADA)
+                ),
+                presentes_count=Count(
+                    "reservas", filter=Q(reservas__asistencia__presente=True)
+                ),
+            )
+            .order_by("-fecha", "-hora", "actividad")
         )
-        .order_by("-fecha", "-hora", "actividad")
-    )
 
-    if fecha:
-        turnos_qs = turnos_qs.filter(fecha=fecha)
+        if fecha:
+            turnos_qs = turnos_qs.filter(fecha=fecha)
 
-    if actividad_id and actividad_id != "todas":
-        try:
-            turnos_qs = turnos_qs.filter(actividad_id=int(actividad_id))
-        except ValueError:
-            pass
+        if actividad_id and actividad_id != "todas":
+            try:
+                turnos_qs = turnos_qs.filter(actividad_id=int(actividad_id))
+            except ValueError:
+                pass
 
     return render(request, "turnos/historial_clases_admin.html", {
         "turnos": turnos_qs,
         "fecha": fecha,
         "actividades": actividades,
         "actividad_seleccionada": actividad_id,
+        "filtrado": filtrado,
     })
 
 
@@ -1287,7 +1292,11 @@ def eliminar_horario_disponible(request, pk):
     - PENDIENTE                → se cancela sin cargo.
     """
     from apps.creditos import services as creditos_services
-    from .notificaciones import enviar_aviso_cancelacion_clase, enviar_aviso_cancelacion_clase_credito
+    from .notificaciones import (
+        enviar_aviso_cancelacion_clase,
+        enviar_aviso_cancelacion_clase_credito,
+        enviar_aviso_cancelacion_clase_por_club,
+    )
 
     horario = get_object_or_404(HorarioDisponible, pk=pk)
     hoy = timezone.now().date()
