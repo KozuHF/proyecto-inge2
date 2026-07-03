@@ -28,7 +28,8 @@
         <form method="get" class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
             <div>
                 <label for="fecha" class="block text-xs font-bold text-gray-500 uppercase mb-2 dark:text-gray-400">Fecha</label>
-                <input type="date" id="fecha" name="fecha" value="{{ fecha|date:'Y-m-d' }}"
+                <input type="{% if fecha %}date{% else %}text{% endif %}" id="fecha" name="fecha" value="{{ fecha|date:'Y-m-d' }}" placeholder="---"
+                    onfocus="this.type='date'" onblur="if(!this.value){this.type='text';}"
                     class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
             </div>
             <div>
@@ -48,10 +49,6 @@
                     class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition">
                     Filtrar
                 </button>
-                <a href="{% url 'historial_clases_turnos' %}"
-                   class="flex-1 text-center px-4 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">
-                    Limpiar
-                </a>
             </div>
         </form>
     </div>
@@ -120,7 +117,11 @@
     </div>
     {% else %}
     <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        {% if filtrado %}
         <p class="text-gray-500 dark:text-gray-400">No hay clases pasadas que coincidan con los criterios seleccionados.</p>
+        {% else %}
+        <p class="text-gray-500 dark:text-gray-400">Elegí una fecha y/o un deporte y presioná "Filtrar" para ver las clases.</p>
+        {% endif %}
     </div>
     {% endif %}
 </div>

@@ -443,7 +443,14 @@ def activar_usuario(request, pk):
 @rol_requerido(["admin", "employee"])
 def panel_control(request):
     """Panel de control para administradores y empleados."""
-    return render(request, "accounts/panel.html")
+    from datetime import date
+
+    from apps.turnos.models import Turno
+
+    hay_clases_pasadas = Turno.objects.filter(fecha__lt=date.today()).exists()
+    return render(request, "accounts/panel.html", {
+        "hay_clases_pasadas": hay_clases_pasadas,
+    })
 
 
 @login_required
