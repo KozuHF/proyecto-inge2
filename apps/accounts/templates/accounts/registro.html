@@ -178,20 +178,87 @@ document.addEventListener('DOMContentLoaded', function () {
         }},
     ].filter(c => c.el);
 
-    const tocados = new Set();
+    const cardFields = [get('id_numero_tarjeta'), get('id_titular'), get('id_vencimiento'), get('id_cvv')].filter(Boolean);
+    let tieneErrorTarjetaServidor = false;
 
     function contenedor(el) {
         let c = el.closest('div');
-        if (c && c.classList.contains('relative')) c = c.parentElement;  // campo tarjeta
+        if (c && c.classList.contains('relative')) c = c.parentElement;
         return c;
+    }
+
+    cardFields.forEach(el => {
+        const c = contenedor(el);
+        const errorServer = c && c.querySelector('p.text-red-600');
+        if (errorServer) {
+            const txt = errorServer.textContent.trim();
+            if (txt.includes('inválido') || txt.includes('incorrecto') || txt.includes('no es correcto') || el.id === 'id_cvv') {
+                tieneErrorTarjetaServidor = true;
+            }
+        }
+    });
+
+    const tocados = new Set();
+    const camposConErrorServidor = new Set();
+
+    campos.forEach(cfg => {
+        const c = contenedor(cfg.el);
+        const errorServer = c && c.querySelector('p.text-red-600');
+        if (errorServer) {
+            if (tieneErrorTarjetaServidor && cardFields.includes(cfg.el)) {
+                return;
+            }
+            camposConErrorServidor.add(cfg.el);
+            const visible = (cfg.el._flatpickr && cfg.el._flatpickr.altInput) ? cfg.el._flatpickr.altInput : cfg.el;
+            if (!cfg.checkbox) {
+                visible.classList.add('border-red-500');
+                visible.classList.remove('focus:ring-green-500', 'focus:border-green-500');
+            }
+        }
+    });
+
+    if (tieneErrorTarjetaServidor) {
+        cardFields.forEach(el => {
+            camposConErrorServidor.add(el);
+            const visible = (el._flatpickr && el._flatpickr.altInput) ? el._flatpickr.altInput : el;
+            visible.classList.add('border-red-500');
+            visible.classList.remove('focus:ring-green-500', 'focus:border-green-500');
+            
+            const c = contenedor(el);
+            if (c) {
+                c.querySelectorAll('p.text-red-600:not(.js-error-msg)').forEach(p => p.remove());
+            }
+        });
+        
+        const cardContainer = get('id_numero_tarjeta')?.closest('.space-y-1');
+        if (cardContainer) {
+            let pGeneral = cardContainer.querySelector('.js-card-general-error');
+            if (!pGeneral) {
+                pGeneral = document.createElement('p');
+                pGeneral.className = 'text-sm text-red-600 font-semibold mb-4 js-card-general-error';
+                cardContainer.insertBefore(pGeneral, cardContainer.firstChild);
+            }
+            pGeneral.textContent = 'Ingrese una tarjeta válida';
+        }
+    }
+
+    function limpiarErrorGeneralTarjeta() {
+        cardFields.forEach(el => {
+            camposConErrorServidor.delete(el);
+            const visible = (el._flatpickr && el._flatpickr.altInput) ? el._flatpickr.altInput : el;
+            visible.classList.remove('border-red-500');
+        });
+        const cardContainer = get('id_numero_tarjeta')?.closest('.space-y-1');
+        if (cardContainer) {
+            const pGeneral = cardContainer.querySelector('.js-card-general-error');
+            if (pGeneral) pGeneral.remove();
+        }
     }
 
     function mostrarError(cfg, msg) {
         const el = cfg.el, c = contenedor(el);
         if (!c) return;
-        // Si el campo lo maneja flatpickr, el input visible es el "altInput".
         const visible = (el._flatpickr && el._flatpickr.altInput) ? el._flatpickr.altInput : el;
-        // Reemplaza cualquier error del servidor por el nuestro, sin duplicar.
         c.querySelectorAll('p.text-red-600:not(.js-error-msg)').forEach(p => p.remove());
         let p = c.querySelector('.js-error-msg');
         if (msg) {
@@ -215,36 +282,58 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function refrescar() {
-        // Pinta/limpia el error de cada campo ya tocado.
-        campos.forEach(cfg => { if (tocados.has(cfg.el)) mostrarError(cfg, cfg.validate(cfg.el)); });
-        // El botón se muestra solo si TODOS los campos son válidos.
-        const todoValido = campos.every(cfg => cfg.validate(cfg.el) === null);
+        campos.forEach(cfg => {
+            if (camposConErrorServidor.has(cfg.el)) {
+                return;
+            }
+            if (tocados.has(cfg.el)) {
+                mostrarError(cfg, cfg.validate(cfg.el));
+            }
+        });
+        const todoValido = campos.every(cfg => cfg.validate(cfg.el) === null && !camposConErrorServidor.has(cfg.el));
         if (btnCrear) btnCrear.classList.toggle('hidden', !todoValido);
         if (btnAyuda) btnAyuda.classList.toggle('hidden', todoValido);
     }
 
     campos.forEach(cfg => {
         const evtVivo = cfg.checkbox ? 'change' : 'input';
-        cfg.el.addEventListener(evtVivo, () => { if (cfg.checkbox) tocados.add(cfg.el); refrescar(); });
-        // 'change' marca el campo como tocado (cubre el date picker de flatpickr,
-        // que dispara 'change' al elegir una fecha).
-        cfg.el.addEventListener('change', () => { tocados.add(cfg.el); refrescar(); });
-        cfg.el.addEventListener('blur', () => { tocados.add(cfg.el); refrescar(); });
-        // Si el campo viene con valor o con error del servidor (POST fallido),
-        // se considera "tocado" para mostrar su estado al cargar.
-        const c = contenedor(cfg.el);
-        const errorServer = c && c.querySelector('p.text-red-600');
+        cfg.el.addEventListener(evtVivo, () => {
+            if (cardFields.includes(cfg.el)) {
+                limpiarErrorGeneralTarjeta();
+            } else {
+                camposConErrorServidor.delete(cfg.el);
+            }
+            if (cfg.checkbox) tocados.add(cfg.el);
+            refrescar();
+        });
+        cfg.el.addEventListener('change', () => {
+            if (cardFields.includes(cfg.el)) {
+                limpiarErrorGeneralTarjeta();
+            } else {
+                camposConErrorServidor.delete(cfg.el);
+            }
+            tocados.add(cfg.el);
+            refrescar();
+        });
+        cfg.el.addEventListener('blur', () => {
+            if (cardFields.includes(cfg.el)) {
+                limpiarErrorGeneralTarjeta();
+            } else {
+                camposConErrorServidor.delete(cfg.el);
+            }
+            tocados.add(cfg.el);
+            refrescar();
+        });
         const conValor = cfg.checkbox ? cfg.el.checked : cfg.el.value.trim() !== '';
-        if (conValor || errorServer) tocados.add(cfg.el);
+        if (conValor) tocados.add(cfg.el);
     });
 
     const nroDoc = get('id_nro_documento');
     if (nroDoc) { nroDoc.setAttribute('maxlength', '8'); nroDoc.setAttribute('inputmode', 'numeric'); }
 
-    // Red de seguridad: el botón está oculto si algo falla, pero por las dudas
-    // (Enter, autofill) validamos todo en el submit.
     if (form) {
         form.addEventListener('submit', function (e) {
+            camposConErrorServidor.clear();
             campos.forEach(cfg => tocados.add(cfg.el));
             refrescar();
             if (!campos.every(cfg => cfg.validate(cfg.el) === null)) {
@@ -255,7 +344,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    refrescar();  // estado inicial
+    refrescar();
 });
 </script>
 {% endblock body %}

@@ -3,6 +3,7 @@ import logging
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.safestring import mark_safe
@@ -26,7 +27,7 @@ def qr_reserva(request, pk):
         "turno", "turno__actividad", "usuario"
     ).filter(pk=pk).first()
     if reserva is None or reserva.usuario != request.user:
-        return redirect("turnos:mis_reservas")
+        raise Http404("Reserva no encontrada o no pertenece al usuario.")
 
     try:
         asistencia = services.obtener_o_crear_asistencia(reserva)

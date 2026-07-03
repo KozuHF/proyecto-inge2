@@ -156,12 +156,15 @@ class ServiciosAsistenciaTest(AsistenciaBaseTestCase):
         self.assertEqual(res.estado, "no_elegible")
         self.assertIn("abono", res.mensaje.lower())
 
-    def test_individual_senado_sigue_sin_qr(self):
-        """Regresión: el turno individual señado (50%) no tiene QR."""
-        reserva = self._reserva(fecha=date(2035, 1, 2), estado_pago=Reserva.EstadoPago.SENADO)
-        self.assertFalse(services.qr_disponible(reserva))
-        with self.assertRaises(ValidationError):
-            services.obtener_o_crear_asistencia(reserva)
+    def test_individual_senado_tiene_qr_pero_no_se_puede_marcar(self):
+        """El turno individual señado (50%) tiene QR pero no se puede marcar asistencia."""
+        reserva = self._reserva_en_ventana(estado_pago=Reserva.EstadoPago.SENADO)
+        self.assertTrue(services.qr_disponible(reserva))
+        asistencia = services.obtener_o_crear_asistencia(reserva)
+        res = services.marcar_asistencia(asistencia.codigo, self.empleado)
+        self.assertFalse(res.exito)
+        self.assertEqual(res.estado, "no_elegible")
+        self.assertIn("pago de esta clase no está completo", res.mensaje)
 
     def test_marcar_codigo_inexistente(self):
         import uuid
@@ -211,13 +214,15 @@ class VistasAsistenciaTest(AsistenciaBaseTestCase):
         asistencia.refresh_from_db()
         self.assertTrue(asistencia.presente)
 
-    def test_marcar_get_muestra_pago_pendiente_de_abono(self):
-        reserva = self._reserva_abono_en_ventana()
+    def test_marcar_get_muestra_pago_incompleto_individual_senado(self):
+        reserva = self._reserva_en_ventana(estado_pago=Reserva.EstadoPago.SENADO)
         asistencia = services.obtener_o_crear_asistencia(reserva)
         self.client.force_login(self.empleado)
         resp = self.client.get(reverse("asistencia:marcar", kwargs={"codigo": asistencia.codigo}))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Pago pendiente (abono)")
+        self.assertContains(resp, "Señado (pago incompleto)")
+        self.assertContains(resp, "Esta clase fue señada pero el pago no está completo")
+        self.assertNotContains(resp, 'type="submit"')
 
     def test_escanear_empleado_ok_cliente_prohibido(self):
         url = reverse("asistencia:escanear")
