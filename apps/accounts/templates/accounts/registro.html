@@ -178,8 +178,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }},
     ].filter(c => c.el);
 
-    const tocados = new Set();
-    const camposConErrorServidor = new Set();
+    const cardFields = [get('id_numero_tarjeta'), get('id_titular'), get('id_vencimiento'), get('id_cvv')].filter(Boolean);
+    let tieneErrorTarjetaServidor = false;
 
     function contenedor(el) {
         let c = el.closest('div');
@@ -187,10 +187,27 @@ document.addEventListener('DOMContentLoaded', function () {
         return c;
     }
 
+    cardFields.forEach(el => {
+        const c = contenedor(el);
+        const errorServer = c && c.querySelector('p.text-red-600');
+        if (errorServer) {
+            const txt = errorServer.textContent.trim();
+            if (txt.includes('inválido') || txt.includes('incorrecto') || txt.includes('no es correcto') || el.id === 'id_cvv') {
+                tieneErrorTarjetaServidor = true;
+            }
+        }
+    });
+
+    const tocados = new Set();
+    const camposConErrorServidor = new Set();
+
     campos.forEach(cfg => {
         const c = contenedor(cfg.el);
         const errorServer = c && c.querySelector('p.text-red-600');
         if (errorServer) {
+            if (tieneErrorTarjetaServidor && cardFields.includes(cfg.el)) {
+                return;
+            }
             camposConErrorServidor.add(cfg.el);
             const visible = (cfg.el._flatpickr && cfg.el._flatpickr.altInput) ? cfg.el._flatpickr.altInput : cfg.el;
             if (!cfg.checkbox) {
@@ -199,6 +216,44 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
     });
+
+    if (tieneErrorTarjetaServidor) {
+        cardFields.forEach(el => {
+            camposConErrorServidor.add(el);
+            const visible = (el._flatpickr && el._flatpickr.altInput) ? el._flatpickr.altInput : el;
+            visible.classList.add('border-red-500');
+            visible.classList.remove('focus:ring-green-500', 'focus:border-green-500');
+            
+            const c = contenedor(el);
+            if (c) {
+                c.querySelectorAll('p.text-red-600:not(.js-error-msg)').forEach(p => p.remove());
+            }
+        });
+        
+        const cardContainer = get('id_numero_tarjeta')?.closest('.space-y-1');
+        if (cardContainer) {
+            let pGeneral = cardContainer.querySelector('.js-card-general-error');
+            if (!pGeneral) {
+                pGeneral = document.createElement('p');
+                pGeneral.className = 'text-sm text-red-600 font-semibold mb-4 js-card-general-error';
+                cardContainer.insertBefore(pGeneral, cardContainer.firstChild);
+            }
+            pGeneral.textContent = 'Ingrese una tarjeta válida';
+        }
+    }
+
+    function limpiarErrorGeneralTarjeta() {
+        cardFields.forEach(el => {
+            camposConErrorServidor.delete(el);
+            const visible = (el._flatpickr && el._flatpickr.altInput) ? el._flatpickr.altInput : el;
+            visible.classList.remove('border-red-500');
+        });
+        const cardContainer = get('id_numero_tarjeta')?.closest('.space-y-1');
+        if (cardContainer) {
+            const pGeneral = cardContainer.querySelector('.js-card-general-error');
+            if (pGeneral) pGeneral.remove();
+        }
+    }
 
     function mostrarError(cfg, msg) {
         const el = cfg.el, c = contenedor(el);
@@ -243,17 +298,29 @@ document.addEventListener('DOMContentLoaded', function () {
     campos.forEach(cfg => {
         const evtVivo = cfg.checkbox ? 'change' : 'input';
         cfg.el.addEventListener(evtVivo, () => {
-            camposConErrorServidor.delete(cfg.el);
+            if (cardFields.includes(cfg.el)) {
+                limpiarErrorGeneralTarjeta();
+            } else {
+                camposConErrorServidor.delete(cfg.el);
+            }
             if (cfg.checkbox) tocados.add(cfg.el);
             refrescar();
         });
         cfg.el.addEventListener('change', () => {
-            camposConErrorServidor.delete(cfg.el);
+            if (cardFields.includes(cfg.el)) {
+                limpiarErrorGeneralTarjeta();
+            } else {
+                camposConErrorServidor.delete(cfg.el);
+            }
             tocados.add(cfg.el);
             refrescar();
         });
         cfg.el.addEventListener('blur', () => {
-            camposConErrorServidor.delete(cfg.el);
+            if (cardFields.includes(cfg.el)) {
+                limpiarErrorGeneralTarjeta();
+            } else {
+                camposConErrorServidor.delete(cfg.el);
+            }
             tocados.add(cfg.el);
             refrescar();
         });
