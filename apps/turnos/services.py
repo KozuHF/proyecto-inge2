@@ -474,14 +474,19 @@ def cancelar_reserva(usuario, reserva_id: int) -> tuple[Reserva, bool]:
     except Reserva.DoesNotExist:
         raise ValidationError(_("Reserva no encontrada."))
 
+    from . import suspensiones
     from .penalidad_cancelaciones import registrar_cancelacion_abono_mensual
 
     otorgar_credito = creditos_services.puede_otorgar_credito_cancelacion(reserva)
     era_abono = reserva.es_abonado_mensual
+    era_confirmada = reserva.estado == Reserva.Estado.CONFIRMADA
+    era_señada = reserva.estado_pago == Reserva.EstadoPago.SENADO
     reserva.cancelar()
 
     if era_abono:
         registrar_cancelacion_abono_mensual(reserva)
+    elif era_confirmada and era_señada:
+        suspensiones.verificar_suspension_no_abonado(usuario)
 
     if otorgar_credito:
         creditos_services.otorgar_credito_cancelacion(reserva)

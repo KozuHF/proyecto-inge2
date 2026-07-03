@@ -276,8 +276,9 @@ def cancelar_individuales_ausentes_impagos() -> int:
     n = 0
     for reserva in candidatas:
         with transaction.atomic():
-            if suspensiones.cancelar_por_ausencia_impaga(reserva):
-                n += 1
+            reserva.cancelar()
+            suspensiones.verificar_suspension_no_abonado(reserva.usuario)
+            n += 1
 
     return n
 

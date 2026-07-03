@@ -132,8 +132,8 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         default=False,
         verbose_name=_("Suspendido"),
         help_text=_(
-            "Suspensión global como no abonado por no asistir a 3 clases sueltas "
-            "señadas sin completar el pago en el mismo mes."
+            "Suspensión global como no abonado por incumplir el pago de 3 clases "
+            "sueltas en el mismo mes. No permite reservar turnos sueltos de ningún deporte."
         ),
     )
     monto_adeudado_suspension = models.DecimalField(

@@ -64,8 +64,6 @@ class Command(BaseCommand):
         ))
 
     def _crear_no_abonado_suspendido(self) -> Usuario:
-        from apps.turnos import suspensiones
-
         usuario, creado = Usuario.objects.get_or_create(
             email=NO_ABONADO_EMAIL,
             defaults=dict(
@@ -79,42 +77,12 @@ class Command(BaseCommand):
         if creado:
             usuario.set_password(USER_PASSWORD)
 
-        usuario.suspendido = False
-        usuario.monto_adeudado_suspension = None
+        usuario.suspendido = True
+        usuario.monto_adeudado_suspension = Decimal("5000.00")
         usuario.save(update_fields=["suspendido", "monto_adeudado_suspension", "password"])
 
-        actividad, _ = Actividad.objects.get_or_create(
-            nombre=Actividad.Nombre.FUTBOL,
-            defaults={"cupos": 5, "precio_turno": Decimal("5000.00")},
-        )
-
-        # Tres no-shows señados en el mes actual → suspensión automática.
-        ahora = timezone.localtime()
-        for dia in (1, 2, 3):
-            turno, _ = Turno.objects.get_or_create(
-                actividad=actividad,
-                fecha=date(ahora.year, ahora.month, dia),
-                hora=10,
-                defaults={"cupos": 5},
-            )
-            reserva, _ = Reserva.objects.update_or_create(
-                usuario=usuario,
-                turno=turno,
-                defaults=dict(
-                    estado=Reserva.Estado.CONFIRMADA,
-                    estado_pago=Reserva.EstadoPago.SENADO,
-                    tipo_reserva=Reserva.TipoReserva.INDIVIDUAL,
-                    precio_abonado=Decimal("2500.00"),
-                ),
-            )
-            suspensiones.cancelar_por_ausencia_impaga(reserva)
-
-        usuario.refresh_from_db()
         estado = "creado" if creado else "ya existía, se actualizó"
-        self.stdout.write(
-            f"  + No abonado suspendido {estado}: {usuario.email} "
-            f"(monto ${usuario.monto_adeudado_suspension})"
-        )
+        self.stdout.write(f"  + No abonado suspendido {estado}: {usuario.email}")
         return usuario
 
     def _crear_abonado_suspendido(self) -> Usuario:

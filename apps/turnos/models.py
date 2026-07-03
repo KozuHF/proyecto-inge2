@@ -386,14 +386,6 @@ class Reserva(models.Model):
         blank=True,
         verbose_name=_("Referencia de pago"),
     )
-    incumplimiento_no_abonado = models.BooleanField(
-        default=False,
-        verbose_name=_("Incumplimiento por seña impaga"),
-        help_text=_(
-            "Marcado cuando el cliente no asistió a una clase suelta señada "
-            "sin completar el pago del saldo."
-        ),
-    )
 
     class Meta:
         verbose_name        = _("Reserva")

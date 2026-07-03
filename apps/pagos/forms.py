@@ -74,8 +74,7 @@ class TarjetaAltaForm(forms.Form):
 class PagoSimpleForm(forms.Form):
     """
     Tarjeta para un cobro de monto fijo sin opciones de tipo de pago ni
-    créditos (ej. levantar una suspensión). Solo permite usar la tarjeta guardada
-    e ingresar CVV, igual que el flujo de pago de reservas.
+    créditos (ej. levantar una suspensión). Permite usar la tarjeta guardada.
     """
 
     modo_tarjeta = forms.ChoiceField(
@@ -84,26 +83,39 @@ class PagoSimpleForm(forms.Form):
             (tarjetas.MODO_TARJETA_GUARDADA, _("Usar tarjeta guardada")),
             (tarjetas.MODO_TARJETA_NUEVA, _("Usar otra tarjeta")),
         ],
-        widget=forms.HiddenInput(),
+        widget=forms.RadioSelect(
+            attrs={"class": "w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"},
+        ),
         required=False,
     )
     numero_tarjeta = forms.CharField(
         label=_("Número de tarjeta"),
         max_length=19,
         required=False,
-        widget=forms.HiddenInput(),
+        widget=forms.TextInput(
+            attrs={
+                "class": INPUT_TARJETA,
+                "placeholder": "0000000000000000",
+                "autocomplete": "off",
+                "inputmode": "numeric",
+            }
+        ),
     )
     titular = forms.CharField(
         label=_("Titular"),
         max_length=100,
         required=False,
-        widget=forms.HiddenInput(),
+        widget=forms.TextInput(
+            attrs={"class": INPUT_TARJETA, "placeholder": "Nombre Apellido"}
+        ),
     )
     vencimiento = forms.CharField(
         label=_("Vencimiento (MM/AA)"),
         max_length=7,
         required=False,
-        widget=forms.HiddenInput(),
+        widget=forms.TextInput(
+            attrs={"class": INPUT_TARJETA, "placeholder": "06/29", "autocomplete": "off"}
+        ),
     )
     cvv = forms.CharField(
         label=_("CVV"),
@@ -117,20 +129,22 @@ class PagoSimpleForm(forms.Form):
     def __init__(self, *args, tarjeta_guardada=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.tarjeta_guardada = tarjeta_guardada
-        if tarjeta_guardada:
-            self.fields["modo_tarjeta"].initial = tarjetas.MODO_TARJETA_GUARDADA
-        else:
+        if not tarjeta_guardada:
+            self.fields["modo_tarjeta"].widget = forms.HiddenInput()
             self.fields["modo_tarjeta"].initial = tarjetas.MODO_TARJETA_NUEVA
+        else:
+            self.fields["modo_tarjeta"].initial = tarjetas.MODO_TARJETA_GUARDADA
 
     @property
     def modo_guardada(self) -> bool:
-        return bool(self.tarjeta_guardada)
+        if not self.tarjeta_guardada:
+            return False
+        if self.is_bound:
+            return self.data.get("modo_tarjeta") == tarjetas.MODO_TARJETA_GUARDADA
+        return True
 
     def clean(self):
         cleaned = super().clean()
-        if not self.tarjeta_guardada:
-            raise forms.ValidationError(_("No tenés una tarjeta guardada para realizar el pago."))
-
         cvv = (cleaned.get("cvv") or "").strip()
         if not cvv:
             self.add_error("cvv", _("Este campo es obligatorio."))
@@ -140,12 +154,39 @@ class PagoSimpleForm(forms.Form):
             except DjangoValidationError as exc:
                 self.add_error("cvv", exc.messages)
 
+        if self.modo_guardada:
+            return cleaned
+
+        numero = cleaned.get("numero_tarjeta", "")
+        titular = (cleaned.get("titular") or "").strip()
+        vencimiento = cleaned.get("vencimiento", "")
+
+        if not numero:
+            self.add_error("numero_tarjeta", _("Este campo es obligatorio."))
+        else:
+            try:
+                tarjetas.validar_numero_tarjeta_campo(numero)
+            except forms.ValidationError as exc:
+                self.add_error("numero_tarjeta", exc.messages)
+
+        if not titular:
+            self.add_error("titular", _("Este campo es obligatorio."))
+        if not vencimiento:
+            self.add_error("vencimiento", _("Este campo es obligatorio."))
+        else:
+            try:
+                cleaned["vencimiento"] = tarjetas.validar_vencimiento_campo(vencimiento)
+            except forms.ValidationError as exc:
+                self.add_error("vencimiento", exc.messages)
+
         return cleaned
 
     def datos_tarjeta_para_pago(self, usuario):
-        """Devuelve (pan, cvv) usando siempre la tarjeta guardada."""
+        """Devuelve (pan, cvv)."""
         cvv = self.cleaned_data.get("cvv") or ""
-        return tarjetas.resolver_pan_pago(usuario, True, ""), cvv
+        if self.modo_guardada:
+            return tarjetas.resolver_pan_pago(usuario, True, ""), cvv
+        return normalizar_numero_tarjeta(self.cleaned_data["numero_tarjeta"]), cvv
 
 
 class TarjetaPagoForm(forms.Form):
