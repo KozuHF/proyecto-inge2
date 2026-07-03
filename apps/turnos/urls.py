@@ -8,6 +8,7 @@ urlpatterns = [
     path("reservar/actividad/", views.paso_actividad, name="paso_actividad"),
     path("reservar/fecha/", views.paso_fecha, name="paso_fecha"),
     path("reservar/hora/", views.paso_hora, name="paso_hora"),
+    path("reservar/hora/lista-espera/", views.anotar_lista_espera_turno_unico, name="anotar_lista_espera_turno_unico"),
     path("reservar/confirmar/", views.paso_confirmar, name="paso_confirmar"),
     path("reservar/fechas/", views.paso_seleccion_fechas, name="paso_seleccion_fechas"),
     path("reservar/fechas/lista-espera/", views.anotar_lista_espera_abono, name="anotar_lista_espera_abono"),

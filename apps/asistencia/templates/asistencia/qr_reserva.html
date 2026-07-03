@@ -25,8 +25,13 @@
 
       {% if pago_pendiente %}
         <div class="mb-6 p-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-lg text-left">
-          <span class="font-semibold">Tu abono está pendiente de pago.</span>
-          Recordá abonarlo antes del día 10 del mes; pasado el plazo, el QR deja de ser válido.
+          {% if reserva.es_abonado_mensual %}
+            <span class="font-semibold">Tu abono está pendiente de pago.</span>
+            Recordá abonarlo antes del día 10 del mes; pasado el plazo, el QR deja de ser válido.
+          {% else %}
+            <span class="font-semibold">Tu clase está señada, pero el pago no está completo.</span>
+            No vas a poder registrar la asistencia hasta que abones el saldo restante.
+          {% endif %}
         </div>
       {% endif %}
 

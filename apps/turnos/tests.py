@@ -107,12 +107,11 @@ class TurnosPanelTestCase(TestCase):
         self.assertEqual(r2.invitacion.estado, r2.invitacion.Estado.PENDIENTE)
 
     def test_panel_views_access_permissions(self):
-        """Only administrators can access panel_turnos, editar_turno, and eliminar_turno."""
+        """Only administrators can access panel_turnos and editar_turno."""
         # Test anonymous redirection
         for url_name, kwargs in [
             ('panel_turnos', None),
             ('editar_turno', {'pk': self.turno.pk}),
-            ('eliminar_turno', {'pk': self.turno.pk})
         ]:
             url = reverse(url_name, kwargs=kwargs)
             response = self.client.get(url)
@@ -124,7 +123,6 @@ class TurnosPanelTestCase(TestCase):
         for url_name, kwargs in [
             ('panel_turnos', None),
             ('editar_turno', {'pk': self.turno.pk}),
-            ('eliminar_turno', {'pk': self.turno.pk})
         ]:
             url = reverse(url_name, kwargs=kwargs)
             response = self.client.get(url)
@@ -136,7 +134,6 @@ class TurnosPanelTestCase(TestCase):
         for url_name, kwargs in [
             ('panel_turnos', None),
             ('editar_turno', {'pk': self.turno.pk}),
-            ('eliminar_turno', {'pk': self.turno.pk})
         ]:
             url = reverse(url_name, kwargs=kwargs)
             response = self.client.get(url)
@@ -148,7 +145,6 @@ class TurnosPanelTestCase(TestCase):
         for url_name, kwargs in [
             ('panel_turnos', None),
             ('editar_turno', {'pk': self.turno.pk}),
-            ('eliminar_turno', {'pk': self.turno.pk})
         ]:
             url = reverse(url_name, kwargs=kwargs)
             response = self.client.get(url)
@@ -198,32 +194,6 @@ class TurnosPanelTestCase(TestCase):
         self.assertNotIn(15, choices)
         # self.turno's own hour (which is self.turno.hora, e.g. 10) should be in choices to allow keeping it
         self.assertIn(self.turno.hora, choices)
-
-    def test_eliminar_turno_view_post(self):
-        """Admin can delete a turn via the delete view, deleting associated reservations."""
-        # Create a reservation
-        reserva = Reserva.objects.create(
-            usuario=self.client_user,
-            turno=self.turno,
-            estado=Reserva.Estado.CONFIRMADA
-        )
-
-        self.client.force_login(self.admin)
-
-        # Verify the GET request warns about 1 reservation
-        url = reverse('eliminar_turno', kwargs={'pk': self.turno.pk})
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response,
-                            "La eliminación de turnos puede cancelar de forma permanente las reservas asociadas a los mismos.")
-
-        # Perform the POST request to delete the shift
-        response = self.client.post(url)
-        self.assertRedirects(response, reverse('panel_turnos'))
-
-        # Verify both Turno and Reserva are deleted
-        self.assertFalse(Turno.objects.filter(pk=self.turno.pk).exists())
-        self.assertFalse(Reserva.objects.filter(pk=reserva.pk).exists())
 
     def test_crear_horario_disponible_view_get(self):
         """Verify that the schedule creation view loads successfully on GET."""
@@ -372,44 +342,6 @@ class TurnosPanelTestCase(TestCase):
         # 2026-05-19 has override (7500), 2026-05-12 doesn't exist in DB so defaults to activity price (5000)
         # Total should be 7500 + 5000 = 12500
         self.assertEqual(total, Decimal("12500.00"))
-
-    def test_bulk_future_deletion_cancels_reservations(self):
-        """Admin can delete a shift and all future weekly occurrences, canceling/deleting future reservations."""
-        # Create a future Monday shift
-        future_date = date(2026, 6, 1)
-        future_turno = Turno.objects.create(
-            actividad=self.actividad,
-            fecha=future_date,
-            hora=10,
-            cupos=5
-        )
-        # Create reservations
-        r1 = Reserva.objects.create(
-            usuario=self.client_user,
-            turno=self.turno,
-            estado=Reserva.Estado.CONFIRMADA
-        )
-        r2 = Reserva.objects.create(
-            usuario=self.client_user,
-            turno=future_turno,
-            estado=Reserva.Estado.CONFIRMADA
-        )
-
-        self.client.force_login(self.admin)
-
-        # Perform POST to delete this and all future weekly occurrences
-        url = reverse('eliminar_turno', kwargs={'pk': self.turno.pk})
-        post_data = {
-            'tipo_eliminacion': 'todos_futuros'
-        }
-        response = self.client.post(url, post_data)
-        self.assertRedirects(response, reverse('panel_turnos'))
-
-        # Verify both current and future turnos are deleted, and their reservations are gone
-        self.assertFalse(Turno.objects.filter(pk=self.turno.pk).exists())
-        self.assertFalse(Turno.objects.filter(pk=future_turno.pk).exists())
-        self.assertFalse(Reserva.objects.filter(pk=r1.pk).exists())
-        self.assertFalse(Reserva.objects.filter(pk=r2.pk).exists())
 
     def test_paso_fecha_form_holiday(self):
         """PasoFechaForm should be invalid on a holiday."""

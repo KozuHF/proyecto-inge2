@@ -150,7 +150,7 @@ def paso_fecha(request):
             fecha = services.primera_fecha_referencia(dia_semana, anio, mes)
             if fecha is None:
                 form.add_error("mes", _("No quedan clases de ese día en el mes elegido."))
-            elif not services.obtener_horas_disponibles(actividad, fecha):
+            elif not services.horas_configuradas(actividad, dia_semana):
                 form.add_error("dia_semana", _("No hay horarios disponibles configurados para ese día de la semana."))
             else:
                 wizard["fecha"] = fecha.isoformat()
@@ -190,11 +190,15 @@ def paso_hora(request):
 
     actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
     fecha = date_type.fromisoformat(wizard["fecha"])
-    horas_info = services.obtener_horas_disponibles(actividad, fecha)
     # En modo abono mensual, la fecha es solo de referencia (define el día de la
-    # semana): no bloqueamos la hora por tener reserva en esa fecha puntual. Las
-    # clases ya reservadas se informan, clase por clase, en el paso 5.
+    # semana): no bloqueamos la hora por el estado puntual de esa fecha (turno
+    # lleno, cancelado, etc.). Las clases ya reservadas o canceladas se informan,
+    # clase por clase, en el paso 5.
     es_varios = wizard.get("modo") == MODO_VARIOS_TURNOS
+    if es_varios:
+        horas_info = services.horas_configuradas(actividad, fecha.weekday())
+    else:
+        horas_info = services.obtener_horas_disponibles(actividad, fecha)
     form = PasoHoraForm(
         request.POST or None,
         horas_info=horas_info,
@@ -213,6 +217,8 @@ def paso_hora(request):
         "form": form,
         "actividad": actividad,
         "fecha": fecha,
+        "horas_info": horas_info,
+        "es_abono": es_varios,
         "paso": 4,
         "modo": wizard["modo"],
     })
@@ -369,6 +375,39 @@ def anotar_lista_espera_abono(request):
     except ValidationError as exc:
         messages.error(request, exc.message)
     return redirect("turnos:paso_seleccion_fechas")
+
+
+@login_required
+@require_POST
+def anotar_lista_espera_turno_unico(request):
+    """Anota al cliente en la lista de espera de una clase llena, directo desde
+    el paso 4 (sin pasar por la pantalla de confirmación)."""
+    wizard = _wizard_get(request)
+    if wizard.get("modo") != MODO_TURNO_UNICO or "fecha" not in wizard:
+        return redirect("turnos:paso_tipo_abono")
+
+    actividad = get_object_or_404(Actividad, pk=wizard["actividad_id"])
+    fecha = date_type.fromisoformat(wizard["fecha"])
+    try:
+        hora = int(request.POST.get("hora", ""))
+    except (TypeError, ValueError):
+        messages.error(request, _("Horario inválido."))
+        return redirect("turnos:paso_hora")
+
+    try:
+        services.anotar_en_lista_espera(request.user, actividad, fecha, hora)
+        _wizard_clear(request)
+        messages.success(
+            request,
+            _(
+                "Te anotamos en la lista de espera, sin cargo. Si se libera un "
+                "cupo te vamos a invitar por mail y ahí podrás pagar la clase."
+            ),
+        )
+        return redirect("turnos:mis_reservas")
+    except ValidationError as exc:
+        messages.error(request, exc.message)
+        return redirect("turnos:paso_hora")
 
 
 # ── Mis reservas ──────────────────────────────────────────────────────────────
@@ -880,124 +919,6 @@ def editar_turno_slot(request, actividad_id, fecha_str, hora):
     return render(request, "turnos/editar_turno.html", {
         "form": form,
         "turno": turno,
-    })
-
-
-def _obtener_datos_eliminacion(actividad, fecha, hora, turno_db=None):
-    if not turno_db:
-        turno_db = Turno.objects.filter(actividad=actividad, fecha=fecha, hora=hora).first()
-
-    turno = turno_db  # puede ser None si no existe en BD
-    reservas_count = turno_db.reservas.count() if turno_db else 0
-
-    weekday = fecha.weekday()
-    future_turnos_db = Turno.objects.filter(
-        actividad=actividad,
-        hora=hora,
-        fecha__gte=fecha
-    )
-    future_turnos = [t for t in future_turnos_db if t.fecha.weekday() == weekday]
-    reservas_futuras_count = sum(t.reservas.count() for t in future_turnos)
-
-    return turno, reservas_count, reservas_futuras_count, future_turnos, turno_db
-
-
-@login_required
-@rol_requerido("admin")
-def eliminar_turno(request, pk):
-    turno_db = get_object_or_404(Turno, pk=pk)
-    turno, reservas_count, reservas_futuras_count, future_turnos, unused_turno_db = _obtener_datos_eliminacion(
-        turno_db.actividad, turno_db.fecha, turno_db.hora, turno_db=turno_db
-    )
-
-    if request.method == "POST":
-        tipo_eliminacion = request.POST.get("tipo_eliminacion", "este_dia")
-        if tipo_eliminacion == "todos_futuros":
-            deleted_count = len(future_turnos)
-            with transaction.atomic():
-                for t in future_turnos:
-                    t.delete()
-                # Eliminar también la plantilla del horario recurrente
-                HorarioDisponible.objects.filter(
-                    actividad=turno_db.actividad,
-                    dia_semana=turno_db.fecha.weekday(),
-                    hora=turno_db.hora
-                ).delete()
-            messages.success(
-                request,
-                _("Se eliminaron %(count)d turnos programados (hoy y futuros) y se liberó el horario de origen.")
-                % {"count": deleted_count}
-            )
-        else:
-            turno_db.delete()
-            messages.success(
-                request,
-                _("El turno del %(fecha)s a las %(hora)02d:00 fue eliminado exitosamente.")
-                % {"fecha": turno.fecha, "hora": turno.hora}
-            )
-        return redirect("panel_turnos")
-
-    return render(request, "turnos/eliminar_turno_confirm.html", {
-        "turno": turno,
-        "reservas_count": reservas_count,
-        "reservas_futuras_count": reservas_futuras_count,
-        "es_virtual": False,
-    })
-
-
-@login_required
-@rol_requerido("admin")
-def eliminar_turno_slot(request, actividad_id, fecha_str, hora):
-    try:
-        fecha = date_type.fromisoformat(fecha_str)
-    except ValueError:
-        messages.error(request, _("Fecha no válida."))
-        return redirect("panel_turnos")
-
-    actividad = get_object_or_404(Actividad, id=actividad_id)
-    turno, reservas_count, reservas_futuras_count, future_turnos, turno_db = _obtener_datos_eliminacion(
-        actividad, fecha, hora
-    )
-
-    if turno_db is None and request.method == "GET":
-        messages.warning(request, _("No existe ningún turno para esa actividad, fecha y horario."))
-        return redirect("panel_turnos")
-
-    if request.method == "POST":
-        tipo_eliminacion = request.POST.get("tipo_eliminacion", "este_dia")
-        if tipo_eliminacion == "todos_futuros":
-            deleted_count = len(future_turnos)
-            with transaction.atomic():
-                for t in future_turnos:
-                    t.delete()
-                # Eliminar también la plantilla del horario recurrente
-                HorarioDisponible.objects.filter(
-                    actividad=actividad,
-                    dia_semana=fecha.weekday(),
-                    hora=hora
-                ).delete()
-            messages.success(
-                request,
-                _("Se eliminaron %(count)d turnos programados (hoy y futuros) y se liberó el horario de origen.")
-                % {"count": deleted_count}
-            )
-        else:
-            if turno_db:
-                turno_db.delete()
-                messages.success(
-                    request,
-                    _("El turno del %(fecha)s a las %(hora)02d:00 fue eliminado exitosamente.")
-                    % {"fecha": fecha, "hora": hora}
-                )
-            else:
-                messages.success(request, _("El turno ya estaba vacío, no fue necesario eliminar nada."))
-        return redirect("panel_turnos")
-
-    return render(request, "turnos/eliminar_turno_confirm.html", {
-        "turno": turno,
-        "reservas_count": reservas_count,
-        "reservas_futuras_count": reservas_futuras_count,
-        "es_virtual": (turno_db is None),
     })
 
 

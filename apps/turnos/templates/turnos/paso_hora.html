@@ -20,28 +20,49 @@
           <div class="mb-4 p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg">{{ msg }}</div>
         {% endfor %}
       {% endif %}
+      {{ form.hora.errors }}
 
-      <form method="post" class="space-y-3">
-        {% csrf_token %}
-        {% for radio in form.hora %}
-          {% if 'Ya estás anotado' in radio.choice_label or 'lista de espera' in radio.choice_label %}
+      <!-- Los radios se asocian a este form vacío vía el atributo form="" -->
+      <form id="form-hora" method="post">{% csrf_token %}</form>
+
+      <div class="space-y-3">
+        {% for info in horas_info %}
+          {% if not es_abono and info.hora|stringformat:"s" in form.horas_ocupadas %}
             <label class="flex items-center gap-3 p-4 border border-red-200 bg-red-50/50 rounded-xl cursor-not-allowed select-none opacity-60">
-              <input type="radio" name="hora" value="{{ radio.data.value }}" disabled class="w-4 h-4 text-red-600 bg-gray-50 border-gray-300 focus:ring-red-500 focus:ring-2">
-              <span class="font-medium text-gray-500">{{ radio.choice_label }}</span>
+              <input type="radio" name="hora" value="{{ info.hora }}" disabled form="form-hora" class="w-4 h-4 text-red-600 bg-gray-50 border-gray-300 focus:ring-red-500 focus:ring-2">
+              <span class="font-medium text-gray-500">{{ info.hora|stringformat:"02d" }}:00 – {{ info.hora|add:1|stringformat:"02d" }}:00 (Ya estás anotado en esta clase)</span>
             </label>
-          {% elif 'LLENO' in radio.choice_label %}
-            <label class="flex items-center gap-3 p-4 border border-red-200 bg-red-50 rounded-xl cursor-pointer transition">
-              {{ radio.tag }}
-              <span class="font-medium text-gray-800">{{ radio.choice_label }}</span>
+          {% elif not es_abono and info.hora|stringformat:"s" in form.horas_en_espera %}
+            <label class="flex items-center gap-3 p-4 border border-red-200 bg-red-50/50 rounded-xl cursor-not-allowed select-none opacity-60">
+              <input type="radio" name="hora" value="{{ info.hora }}" disabled form="form-hora" class="w-4 h-4 text-red-600 bg-gray-50 border-gray-300 focus:ring-red-500 focus:ring-2">
+              <span class="font-medium text-gray-500">{{ info.hora|stringformat:"02d" }}:00 – {{ info.hora|add:1|stringformat:"02d" }}:00 (Ya estás en lista de espera para esta clase)</span>
             </label>
+          {% elif not es_abono and info.lleno %}
+            <div class="flex items-center justify-between gap-3 p-4 border border-orange-200 bg-orange-50/50 rounded-xl">
+              <div>
+                <span class="font-medium text-gray-800">{{ info.hora|stringformat:"02d" }}:00 – {{ info.hora|add:1|stringformat:"02d" }}:00</span>
+                <span class="block text-xs text-gray-500">Completo · {{ info.en_espera }} en lista de espera</span>
+              </div>
+              <form method="post" action="{% url 'turnos:anotar_lista_espera_turno_unico' %}">
+                {% csrf_token %}
+                <input type="hidden" name="hora" value="{{ info.hora }}">
+                <button type="submit"
+                        class="text-xs font-semibold text-white rounded-lg px-3 py-2 transition whitespace-nowrap"
+                        style="background-color:#ff6900" onmouseover="this.style.backgroundColor='#e05e00'" onmouseout="this.style.backgroundColor='#ff6900'">
+                  Anotarme en lista de espera
+                </button>
+              </form>
+            </div>
           {% else %}
             <label class="flex items-center gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-green-500 hover:bg-green-50 transition">
-              {{ radio.tag }}
-              <span class="font-medium text-gray-800">{{ radio.choice_label }}</span>
+              <input type="radio" name="hora" value="{{ info.hora }}" form="form-hora" class="w-4 h-4 text-green-600 bg-gray-50 border-gray-300 focus:ring-green-500 focus:ring-2">
+              <span class="font-medium text-gray-800">
+                {{ info.hora|stringformat:"02d" }}:00 – {{ info.hora|add:1|stringformat:"02d" }}:00
+                {% if not es_abono %}({{ info.libres }} cupo{{ info.libres|pluralize }} disponible{{ info.libres|pluralize }}){% endif %}
+              </span>
             </label>
           {% endif %}
         {% endfor %}
-        {{ form.hora.errors }}
 
         <p id="aviso-anotado" class="hidden p-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
           Ya estás anotado en todas las clases disponibles de este horario.
@@ -52,12 +73,12 @@
             class="flex-1 text-center border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold rounded-lg text-sm px-5 py-3 transition">
             ← Volver
           </a>
-          <button type="submit" id="btn-siguiente"
+          <button type="submit" form="form-hora" id="btn-siguiente"
             class="hidden flex-1 text-white bg-green-600 hover:bg-green-700 font-semibold rounded-lg text-sm px-5 py-3 transition">
             Siguiente →
           </button>
         </div>
-      </form>
+      </div>
     </div>
 
   </div>
@@ -65,10 +86,10 @@
 
 <script>
   (function () {
-    const form  = document.querySelector('form');
+    const form  = document.getElementById('form-hora');
     const btn   = document.getElementById('btn-siguiente');
     const aviso = document.getElementById('aviso-anotado');
-    const seleccionables = form.querySelectorAll('input[name="hora"]:not([disabled])');
+    const seleccionables = document.querySelectorAll('input[type="radio"][name="hora"]:not([disabled])');
 
     if (seleccionables.length === 0) {
       // Todas las horas ya están reservadas por el cliente: no hay nada que elegir.
@@ -78,7 +99,7 @@
 
     function sync() {
       // El botón aparece recién cuando hay un horario seleccionado.
-      const elegido = form.querySelector('input[name="hora"]:checked');
+      const elegido = document.querySelector('input[name="hora"]:checked');
       btn.classList.toggle('hidden', !elegido);
     }
     seleccionables.forEach(r => r.addEventListener('change', sync));

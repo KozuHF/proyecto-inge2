@@ -24,6 +24,7 @@
       {% if resultado.estado == 'registrada' %}¡Asistencia registrada!
       {% elif resultado.estado == 'ya_registrada' %}Asistencia ya registrada
       {% elif resultado.estado == 'fuera_de_ventana' %}Fuera de horario
+      {% elif resultado.estado == 'cancelada' %}Reserva cancelada
       {% else %}No se pudo registrar{% endif %}
     </h1>
     <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ resultado.mensaje }}</p>
