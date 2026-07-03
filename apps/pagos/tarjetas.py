@@ -34,7 +34,7 @@ MODO_TARJETA_NUEVA = "nueva"
 
 
 def es_pan_demo(pan: str) -> bool:
-    if pan == "4111411141114111": 
+    if pan == "4111411141114111":
         return False
     else:
         return len(pan) == 16 and pan.isdigit()
