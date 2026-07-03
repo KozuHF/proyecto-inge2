@@ -299,7 +299,9 @@ def obtener_estado_clases_abono(actividad, fecha_referencia: date, hora: int, us
             continue
 
         turno = turnos.get(f)
-        if turno is not None:
+        if turno is not None and turno.cancelado_por_club:
+            item["estado"] = "no_disponible"
+        elif turno is not None:
             item["libres"] = turno.cupos_libres
             item["en_espera"] = turno.lista_espera.count()
             item["estado"] = "llena" if turno.esta_lleno else "disponible"
@@ -566,6 +568,31 @@ def cancelar_reservas_futuras_de_usuario(usuario) -> int:
 
 
 # ── Consultas de apoyo para las vistas ───────────────────────────────────────
+
+def horas_configuradas(actividad, dia_semana: int) -> list[dict]:
+    """
+    Horas habilitadas por HorarioDisponible para un día de la semana, sin mirar
+    el estado puntual de ningún Turno concreto.
+
+    Se usa en el modo abono mensual (pasos 3 y 4), donde la fecha elegida es
+    solo una referencia para fijar el día de la semana: si la primera fecha de
+    ese día cae justo en una clase cancelada puntualmente por el club, no debe
+    bloquear la selección del día/hora entero, ya que otras fechas del mes
+    siguen disponibles (eso se resuelve fecha por fecha recién en el paso 5,
+    con obtener_estado_clases_abono).
+    """
+    from .models import HorarioDisponible
+
+    horarios = (
+        HorarioDisponible.objects
+        .filter(actividad=actividad, dia_semana=dia_semana, activo=True)
+        .order_by("hora")
+    )
+    return [
+        {"hora": h.hora, "libres": h.cupos_efectivos(), "lleno": False, "en_espera": 0}
+        for h in horarios
+    ]
+
 
 def obtener_horas_disponibles(actividad, fecha) -> list[dict]:
     """

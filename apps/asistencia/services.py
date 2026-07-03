@@ -22,10 +22,17 @@ class AsistenciaNoElegible(ValidationError):
     """La reserva no es elegible para asistencia (no pagada / no confirmada)."""
 
 
+def resultado_reserva_cancelada(asistencia: Asistencia) -> "ResultadoMarcado":
+    return ResultadoMarcado(
+        exito=False, estado="cancelada", asistencia=asistencia,
+        mensaje=str(_("Esta reserva fue cancelada. No se puede registrar la asistencia.")),
+    )
+
+
 @dataclass
 class ResultadoMarcado:
     exito: bool
-    estado: str          # "registrada" | "ya_registrada" | "fuera_de_ventana" | "no_elegible"
+    estado: str          # "registrada" | "ya_registrada" | "fuera_de_ventana" | "cancelada" | "no_elegible"
     mensaje: str
     asistencia: Asistencia | None = None
 
@@ -177,6 +184,9 @@ def marcar_asistencia(codigo, empleado) -> ResultadoMarcado:
         )
 
     reserva = asistencia.reserva
+
+    if reserva.estado == Reserva.Estado.CANCELADA:
+        return resultado_reserva_cancelada(asistencia)
 
     if not _reserva_elegible(reserva):
         return ResultadoMarcado(

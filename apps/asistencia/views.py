@@ -129,6 +129,14 @@ def marcar(request, codigo):
     if asistencia is None:
         return render(request, "asistencia/qr_invalido.html")
 
+    if asistencia.reserva.estado == Reserva.Estado.CANCELADA:
+        resultado = services.resultado_reserva_cancelada(asistencia)
+        return render(request, "asistencia/marcar_resultado.html", {
+            "resultado": resultado,
+            "asistencia": asistencia,
+            "origen": request.GET.get("origen", "qr"),
+        })
+
     if request.method == "POST":
         resultado = services.marcar_asistencia(codigo, request.user)
         if resultado.exito:

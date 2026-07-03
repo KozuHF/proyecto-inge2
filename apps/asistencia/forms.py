@@ -12,12 +12,16 @@ class BuscarPorDniForm(forms.Form):
 
     nro_documento = forms.CharField(
         label=_("DNI del cliente"),
-        max_length=20,
+        max_length=8,
         validators=[validar_dni],
         widget=forms.TextInput(attrs={
             "placeholder": "12345678",
             "inputmode": "numeric",
+            "pattern": "[0-9]*",
+            "maxlength": "8",
             "autofocus": "autofocus",
+            "onkeypress": "return /[0-9]/.test(event.key)",
+            "oninput": "this.value = this.value.replace(/\\D/g, '').slice(0, 8)",
             "class": (
                 "w-full rounded-lg border border-gray-300 dark:border-gray-600 "
                 "dark:bg-gray-700 dark:text-white px-4 py-3 text-sm "
