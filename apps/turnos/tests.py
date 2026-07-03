@@ -244,27 +244,40 @@ class TurnosPanelTestCase(TestCase):
 
     def test_panel_turnos_vacios_filter(self):
         """Filtering by 'vacios' should exclude shifts with confirmed reservations."""
+        from datetime import date, timedelta
+        from apps.turnos.models import FERIADOS_INAMOVIBLES
+
+        future_date = date.today() + timedelta(days=2)
+        while future_date.weekday() == 6 or (future_date.month, future_date.day) in FERIADOS_INAMOVIBLES:
+            future_date += timedelta(days=1)
+
+        # Create a turno in the future
+        turno_futuro = Turno.objects.create(
+            actividad=self.actividad,
+            fecha=future_date,
+            hora=10,
+            cupos=1
+        )
         # Create a confirmed reservation on the shift
         Reserva.objects.create(
             usuario=self.client_user,
-            turno=self.turno,
+            turno=turno_futuro,
             estado=Reserva.Estado.CONFIRMADA
         )
         self.client.force_login(self.admin)
         url = reverse('panel_turnos')
-        # 2026-05-18 is a Monday (has our shift and virtual slots)
 
         # When filtering by 'todos'
-        response_all = self.client.get(url, {'fecha': '2026-05-18', 'estado_ocupacion': 'todos'})
+        response_all = self.client.get(url, {'fecha': future_date.isoformat(), 'estado_ocupacion': 'todos'})
         self.assertEqual(response_all.status_code, 200)
         self.assertEqual(len(response_all.context['turnos']), 1)
-        self.assertIn(self.turno, response_all.context['turnos'])
+        self.assertIn(turno_futuro, response_all.context['turnos'])
 
         # When filtering by 'vacios'
-        response_vacios = self.client.get(url, {'fecha': '2026-05-18', 'estado_ocupacion': 'vacios'})
+        response_vacios = self.client.get(url, {'fecha': future_date.isoformat(), 'estado_ocupacion': 'vacios'})
         self.assertEqual(response_vacios.status_code, 200)
         self.assertEqual(len(response_vacios.context['turnos']), 0)
-        self.assertNotIn(self.turno, response_vacios.context['turnos'])
+        self.assertNotIn(turno_futuro, response_vacios.context['turnos'])
 
     def test_panel_turnos_holiday(self):
         """Holiday should return es_dia_invalido=True, es_feriado=True, empty turnos, and closed alert notice."""
