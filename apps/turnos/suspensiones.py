@@ -31,24 +31,53 @@ UMBRAL_INCUMPLIMIENTOS_NO_ABONADO = 3
 
 # ── Conteo ─────────────────────────────────────────────────────────────────────
 
-def contar_incumplimientos_no_abonado(usuario, anio: int, mes: int) -> int:
-    """
-    Clases sueltas (no abono) canceladas en el mes sin haber completado el pago.
-
-    Solo cuenta SEÑADO: una reserva individual siempre se crea con el pago (total
-    o seña) aplicado en el mismo momento, así que el único caso real de "clase
-    confirmada e impaga" es la que se señó y nunca se completó. PENDIENTE en una
-    reserva cancelada solo puede venir de una baja de lista de espera (nunca tuvo
-    el cupo confirmado), así que no cuenta.
-    """
+def _qs_incumplimientos_no_abonado(usuario, anio: int, mes: int):
+    """Reservas señadas canceladas por no-show que cuentan para la suspensión."""
     return Reserva.objects.filter(
         usuario=usuario,
         grupo_mensual__isnull=True,
         estado=Reserva.Estado.CANCELADA,
         estado_pago=Reserva.EstadoPago.SENADO,
+        incumplimiento_no_abonado=True,
         fecha_cancelacion__year=anio,
         fecha_cancelacion__month=mes,
-    ).count()
+    )
+
+
+def contar_incumplimientos_no_abonado(usuario, anio: int, mes: int) -> int:
+    """
+    Clases sueltas señadas canceladas en el mes por no asistir sin completar el pago.
+    """
+    return _qs_incumplimientos_no_abonado(usuario, anio, mes).count()
+
+
+@transaction.atomic
+def cancelar_por_ausencia_impaga(reserva: Reserva) -> bool:
+    """
+    Cancela una reserva individual impaga cuya clase ya terminó y el cliente
+    no asistió. La seña se retiene. Si estaba señada, cuenta como incumplimiento
+    para la suspensión global de no abonados. No ofrece el cupo en lista de espera.
+    """
+    from .cancelacion_clase import _cancelar_reserva_sin_lista_espera
+
+    if reserva.estado == Reserva.Estado.CANCELADA:
+        return False
+    if reserva.grupo_mensual_id is not None:
+        return False
+    if reserva.estado_pago not in (
+        Reserva.EstadoPago.PENDIENTE,
+        Reserva.EstadoPago.SENADO,
+    ):
+        return False
+
+    era_señada = reserva.estado_pago == Reserva.EstadoPago.SENADO
+    _cancelar_reserva_sin_lista_espera(reserva)
+
+    if era_señada:
+        reserva.incumplimiento_no_abonado = True
+        reserva.save(update_fields=["incumplimiento_no_abonado"])
+        verificar_suspension_no_abonado(reserva.usuario)
+    return True
 
 
 # ── Suspensión de abonados (por deporte) ───────────────────────────────────────
@@ -87,15 +116,7 @@ def verificar_suspension_no_abonado(usuario) -> bool:
         return False
 
     ultimas = (
-        Reserva.objects
-        .filter(
-            usuario=usuario,
-            grupo_mensual__isnull=True,
-            estado=Reserva.Estado.CANCELADA,
-            estado_pago=Reserva.EstadoPago.SENADO,
-            fecha_cancelacion__year=ahora.year,
-            fecha_cancelacion__month=ahora.month,
-        )
+        _qs_incumplimientos_no_abonado(usuario, ahora.year, ahora.month)
         .order_by("-fecha_cancelacion")[:UMBRAL_INCUMPLIMIENTOS_NO_ABONADO]
     )
     monto = sum((r.monto_saldo for r in ultimas), Decimal("0"))

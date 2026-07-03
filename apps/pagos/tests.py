@@ -8,8 +8,49 @@ from apps.accounts.models import Roles, Usuario
 from apps.actividades.models import Actividad
 from apps.creditos.models import Credito
 from apps.creditos.services import ContextoPagoCreditos
-from apps.pagos.forms import TarjetaPagoForm
-from apps.pagos.services import TIPO_TOTAL
+from apps.pagos.forms import PagoSimpleForm, TarjetaPagoForm
+from apps.pagos.services import TIPO_TOTAL, procesar_pago_levantamiento_suspension
+
+
+class PagoSimpleFormTestCase(TestCase):
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user(
+            email="susp@test.com",
+            nombre="Susp",
+            apellido="Test",
+            nro_documento="77777777",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.USER,
+        )
+        self.tarjeta = type("T", (), {"enmascarada": "**** 1971"})()
+
+    def test_cvv_obligatorio_con_tarjeta_guardada(self):
+        form = PagoSimpleForm(
+            {"modo_tarjeta": "guardada", "cvv": ""},
+            tarjeta_guardada=self.tarjeta,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("cvv", form.errors)
+
+    def test_cvv_incorrecto_muestra_error(self):
+        form = PagoSimpleForm(
+            {"modo_tarjeta": "guardada", "cvv": "999"},
+            tarjeta_guardada=self.tarjeta,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("cvv", form.errors)
+
+    def test_no_permite_pago_sin_tarjeta_guardada(self):
+        form = PagoSimpleForm({"modo_tarjeta": "nueva", "cvv": "123"})
+        self.assertFalse(form.is_valid())
+
+    def test_cvv_correcto_es_valido(self):
+        form = PagoSimpleForm(
+            {"modo_tarjeta": "guardada", "cvv": "123"},
+            tarjeta_guardada=self.tarjeta,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
 
 
 class TarjetaPagoFormCreditosTestCase(TestCase):
@@ -171,6 +212,17 @@ class ObtenerReservaPagableTestCase(TestCase):
 
 
 class CardValidationAndPaymentTestCase(TestCase):
+    def setUp(self):
+        self.usuario = Usuario.objects.create_user(
+            email="pago@test.com",
+            nombre="Pago",
+            apellido="Test",
+            nro_documento="88888888",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.USER,
+        )
+
     def test_any_16_digit_card_is_valid(self):
         from apps.pagos import tarjetas
         # A completely random 16 digit card should be valid
@@ -186,6 +238,26 @@ class CardValidationAndPaymentTestCase(TestCase):
     def test_no_funds_card_still_has_no_funds(self):
         from apps.pagos import tarjetas
         self.assertFalse(tarjetas.pan_tiene_fondos("1509200001061970"))
+
+    def test_levantamiento_rechaza_tarjeta_sin_fondos(self):
+        resultado = procesar_pago_levantamiento_suspension(
+            self.usuario,
+            Decimal("5000.00"),
+            "1509200001061970",
+            "123",
+        )
+        self.assertFalse(resultado.exito)
+        self.assertIn("fondos insuficientes", resultado.mensaje.lower())
+
+    def test_levantamiento_rechaza_cvv_incorrecto(self):
+        resultado = procesar_pago_levantamiento_suspension(
+            self.usuario,
+            Decimal("5000.00"),
+            "0602200430071971",
+            "999",
+        )
+        self.assertFalse(resultado.exito)
+        self.assertIn("correcto", resultado.mensaje.lower())
 
     def test_other_cards_have_funds(self):
         from apps.pagos import tarjetas

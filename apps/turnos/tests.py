@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from apps.accounts.models import Usuario, Roles
 from apps.actividades.models import Actividad
@@ -1113,4 +1114,125 @@ class UserReservationConflictTestCase(TestCase):
             form.errors["hora"][0],
             "No podés seleccionar un horario en el que ya tenés otra reserva."
         )
+
+
+class SuspensionNoAbonadoSenadaTestCase(TestCase):
+    """Suspensión global por 3 no-shows con seña impaga en el mismo mes."""
+
+    def setUp(self):
+        from apps.turnos.models import Turno
+
+        self.usuario = Usuario.objects.create_user(
+            email="susp.senada@test.com",
+            nombre="Sus",
+            apellido="Senada",
+            nro_documento="55556666",
+            fecha_nacimiento=date(1990, 1, 1),
+            password="Password123!",
+            rol=Roles.USER,
+        )
+        self.actividad, _ = Actividad.objects.get_or_create(
+            nombre=Actividad.Nombre.FUTBOL,
+            defaults={"cupos": 5, "precio_turno": Decimal("5000.00")},
+        )
+        self.actividad.precio_turno = Decimal("5000.00")
+        self.actividad.save()
+        self.precio = Decimal("5000.00")
+        self.sena = Decimal("2500.00")
+        self.saldo = Decimal("2500.00")
+
+    def _turno_pasado(self, dia: int) -> "Turno":
+        from apps.turnos.models import Turno
+
+        return Turno.objects.create(
+            actividad=self.actividad,
+            fecha=date(2026, 6, dia),
+            hora=10,
+            cupos=5,
+        )
+
+    def _reserva_senada(self, turno):
+        from apps.turnos.models import Reserva
+
+        return Reserva.objects.create(
+            usuario=self.usuario,
+            turno=turno,
+            estado=Reserva.Estado.CONFIRMADA,
+            estado_pago=Reserva.EstadoPago.SENADO,
+            tipo_reserva=Reserva.TipoReserva.INDIVIDUAL,
+            precio_abonado=self.sena,
+        )
+
+    def test_no_suspende_con_menos_de_tres_incumplimientos(self):
+        from apps.turnos import suspensiones
+
+        for dia in (1, 2):
+            reserva = self._reserva_senada(self._turno_pasado(dia))
+            suspensiones.cancelar_por_ausencia_impaga(reserva)
+
+        self.usuario.refresh_from_db()
+        self.assertFalse(self.usuario.suspendido)
+        self.assertEqual(
+            suspensiones.contar_incumplimientos_no_abonado(self.usuario, 2026, 6),
+            2,
+        )
+
+    def test_suspende_al_tercer_no_show_con_monto_y_recargo(self):
+        from apps.turnos import suspensiones
+
+        for dia in (1, 2, 3):
+            reserva = self._reserva_senada(self._turno_pasado(dia))
+            suspensiones.cancelar_por_ausencia_impaga(reserva)
+
+        self.usuario.refresh_from_db()
+        self.assertTrue(self.usuario.suspendido)
+        esperado = (self.saldo * 3 * Decimal("1.05")).quantize(Decimal("0.01"))
+        self.assertEqual(self.usuario.monto_adeudado_suspension, esperado)
+
+    def test_cancelacion_manual_anticipada_no_cuenta(self):
+        from apps.turnos import services, suspensiones
+
+        reserva = self._reserva_senada(self._turno_pasado(10))
+        services.cancelar_reserva(self.usuario, reserva.pk)
+
+        self.usuario.refresh_from_db()
+        self.assertFalse(self.usuario.suspendido)
+        self.assertEqual(
+            suspensiones.contar_incumplimientos_no_abonado(self.usuario, 2026, 6),
+            0,
+        )
+
+    def test_levantar_suspension_habilita_reservas(self):
+        from apps.turnos import suspensiones
+
+        for dia in (1, 2, 3):
+            reserva = self._reserva_senada(self._turno_pasado(dia))
+            suspensiones.cancelar_por_ausencia_impaga(reserva)
+
+        suspensiones.levantar_suspension_no_abonado(self.usuario)
+        self.usuario.refresh_from_db()
+        self.assertFalse(self.usuario.suspendido)
+        self.assertTrue(
+            suspensiones.usuario_puede_reservar_actividad(self.usuario, self.actividad)
+        )
+
+    def test_cancelar_individuales_ausentes_impagos_procesa_señadas(self):
+        from apps.asistencia.services import cancelar_individuales_ausentes_impagos
+        from apps.turnos.models import Turno
+
+        ayer = timezone.localdate() - timedelta(days=1)
+        turno = Turno.objects.create(
+            actividad=self.actividad,
+            fecha=ayer,
+            hora=10,
+            cupos=5,
+        )
+        self._reserva_senada(turno)
+
+        n = cancelar_individuales_ausentes_impagos()
+        self.assertEqual(n, 1)
+
+        reserva = turno.reservas.get(usuario=self.usuario)
+        self.assertEqual(reserva.estado, Reserva.Estado.CANCELADA)
+        self.assertTrue(reserva.incumplimiento_no_abonado)
 
